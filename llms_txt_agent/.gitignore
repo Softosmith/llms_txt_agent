@@ -1,0 +1,23 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ignore Odoo generated files
+*.pot
+*.pyc
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore store listing notes & raw working assets (keep private)
+ASSETS.md
+assets_src/

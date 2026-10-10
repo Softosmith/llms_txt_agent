@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_inherit_website_llms_txt" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.website.llms.txt</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@id='website_settings']" position="inside">
+                <setting id="website_llms_txt_setting" string="AI Search SEO (llms.txt &amp; Markdown)"
+                         help="Generates structured machine-readable llms.txt and markdown content exports for AI search engines (ChatGPT, Claude, Perplexity, Gemini).">
+                    <field name="llm_enabled"/>
+                    <div class="content-group" invisible="not llm_enabled">
+                        <div class="row mt16">
+                            <label class="col-lg-4 o_light_label" string="Site Title" for="llm_site_title"/>
+                            <field name="llm_site_title" placeholder="Defaults to Website Name" class="col-lg-8"/>
+                        </div>
+                        <div class="row mt8">
+                            <label class="col-lg-4 o_light_label" string="Site Summary / Tagline" for="llm_site_summary"/>
+                            <field name="llm_site_summary" placeholder="Brief overview description of your business/website for AI assistants" class="col-lg-8"/>
+                        </div>
+                        <div class="row mt8">
+                            <label class="col-lg-4 o_light_label" string="LLM Guidance / Prompt" for="llm_site_instructions"/>
+                            <field name="llm_site_instructions" placeholder="Additional prompt instructions or context for AI models" class="col-lg-8"/>
+                        </div>
+                        <div class="row mt16">
+                            <div class="col-12 font-weight-bold mb-2">Content Inclusion:</div>
+                            <div class="col-12 ms-3" id="llms_txt_agent_content_inclusion">
+                                <div>
+                                    <field name="llm_include_pages"/>
+                                    <label class="o_light_label ms-2" string="Include Published Website Pages" for="llm_include_pages"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt16">
+                            <label class="col-lg-4 o_light_label" string="Generation &amp; Cache Mode" for="llm_cache_ttl"/>
+                            <field name="llm_cache_ttl" class="col-lg-8"/>
+                        </div>
+                        <div class="row mt8" invisible="llm_cache_ttl == 'realtime'">
+                            <label class="col-lg-4 o_light_label" string="Cache Last Rebuilt" for="llm_cache_last_updated"/>
+                            <div class="col-lg-8 d-flex align-items-center">
+                                <field name="llm_cache_last_updated" class="me-3"/>
+                                <button name="action_rebuild_llms_cache" type="object" string="Rebuild Cache Now" class="btn btn-sm btn-secondary"/>
+                            </div>
+                        </div>
+                        <div class="mt16 pt-2 border-top">
+                            <a href="/llms.txt" target="_blank" role="button" class="btn btn-sm btn-outline-primary me-2">
+                                <i class="fa fa-external-link me-1"/> Preview /llms.txt
+                            </a>
+                            <a href="/llms-full.txt" target="_blank" role="button" class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-file-text-o me-1"/> Preview /llms-full.txt
+                            </a>
+                        </div>
+                    </div>
+                </setting>
+            </xpath>
+        </field>
+    </record>
+</odoo>

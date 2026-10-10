@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="website_pages_form_view_inherit_llm" model="ir.ui.view">
+        <field name="name">website.page.form.inherit.llm</field>
+        <field name="model">website.page</field>
+        <field name="inherit_id" ref="website.website_pages_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/group" position="after">
+                <group string="AI Search Optimization (GEO / llms.txt)" name="ai_geo_settings">
+                    <field name="llm_exclude"/>
+                    <field name="llm_custom_description" placeholder="Custom markdown description for AI search models (ChatGPT, Claude, Perplexity, Gemini). Leave blank to auto-generate from page content."/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
