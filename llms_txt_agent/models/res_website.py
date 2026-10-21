@@ -6,6 +6,28 @@ from odoo import api, fields, models
 from .html_to_md import html_to_markdown
 
 
+# Fields whose value is baked into the generated documents.  Writing any of them
+# through Settings must invalidate the cache, otherwise the crawler keeps
+# reading the previous Site Title / Summary / Guidance until the next cron run
+# (QA-10, FINDINGS D-N and S5 case 5.1).
+# ``llm_cache_ttl`` belongs here as well: switching from "Real-time" to a cached
+# mode would otherwise start serving whatever blob the last cron left behind --
+# possibly months old -- as if it were current.
+LLM_CONTENT_FIELDS = frozenset({
+    'llm_enabled', 'llm_site_title', 'llm_site_summary', 'llm_site_instructions',
+    'llm_include_pages', 'llm_cache_ttl', 'name', 'domain', 'default_lang_id',
+    'language_ids',
+})
+
+# Fields that *are* the cache.  Writing them must never invalidate: the read
+# path fills the cache through this same ``write()``, and without this guard the
+# write would wipe what it just stored, so every crawler request would regenerate
+# from scratch (the promised "<5 ms cached response" would never exist).
+LLM_CACHE_FIELDS = frozenset({
+    'llm_txt_cache', 'llm_full_txt_cache', 'llm_cache_last_updated',
+})
+
+
 class Website(models.Model):
     _inherit = 'website'
 
@@ -55,6 +77,24 @@ class Website(models.Model):
         string="Cache Last Updated",
         readonly=True,
     )
+
+    def write(self, vals):
+        """QA-10: a settings change must reach the crawler, not wait for the cron.
+
+        Every field of the "AI Search SEO" block in Website Settings is a
+        ``related`` field on ``res.config.settings``, so pressing Save writes
+        straight through to ``website`` -- but the shipped module had no
+        ``write()`` here at all, so nothing invalidated the cached documents and
+        the new title/summary/guidance stayed invisible for up to six hours.
+
+        The ``LLM_CACHE_FIELDS`` test is the mandatory loop guard: cache filling
+        comes through this same method and must not invalidate the cache it just
+        wrote.
+        """
+        res = super().write(vals)
+        if set(vals) & LLM_CONTENT_FIELDS and not set(vals) <= LLM_CACHE_FIELDS:
+            self._invalidate_llms_cache()
+        return res
 
     def _get_llms_txt_sections(self, base_url):
         """Hook method to collect sections for llms.txt. Extensible by other modules via super()."""
@@ -202,8 +242,15 @@ class Website(models.Model):
         active_websites.action_rebuild_llms_cache()
 
     def _invalidate_llms_cache(self):
-        """Helper to clear cached fields when underlying content changes."""
+        """Helper to clear cached documents when underlying content changes.
+
+        The timestamp is cleared *with* the documents (FINDINGS D-E).  It used to
+        survive, so Settings kept showing a confident, seconds-old "Cache Last
+        Rebuilt" for a cache that no longer existed -- which is exactly how the
+        crawler outage stayed invisible to the site owner.
+        """
         self.sudo().write({
             'llm_txt_cache': False,
             'llm_full_txt_cache': False,
+            'llm_cache_last_updated': False,
         })

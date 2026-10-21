@@ -6,6 +6,20 @@ from odoo import api, fields, models
 from .html_to_md import html_to_markdown
 
 
+# Page fields whose value reaches the generated documents (QA-38).  A write that
+# touches none of them must leave the cache alone: the shipped code invalidated
+# on *every* page field, and FINDINGS S5 case 5.16 shows what that cost -- a
+# write to an unrelated field wiped the cache, and with the cold-cache read path
+# broken at the time, every endpoint dropped to 403 for crawlers.
+# ``date_publish`` is deliberately in the list: the index publishes a page once
+# its scheduled date passes, so scheduling does change the output.
+LLM_PAGE_TRIGGER_FIELDS = frozenset({
+    'name', 'url', 'is_published', 'date_publish', 'website_indexed',
+    'visibility', 'website_id', 'view_id', 'active', 'arch',
+    'llm_exclude', 'llm_custom_description',
+})
+
+
 class WebsitePage(models.Model):
     _inherit = 'website.page'
 
@@ -59,8 +73,10 @@ class WebsitePage(models.Model):
         return pages
 
     def write(self, vals):
+        """QA-38: invalidate only when the write can change the output."""
         res = super().write(vals)
-        self._invalidate_llms_cache()
+        if set(vals) & LLM_PAGE_TRIGGER_FIELDS:
+            self._invalidate_llms_cache()
         return res
 
     def unlink(self):
@@ -68,7 +84,15 @@ class WebsitePage(models.Model):
         return super().unlink()
 
     def _invalidate_llms_cache(self):
-        """Trigger cache invalidation for associated websites."""
+        """Trigger cache invalidation for associated websites.
+
+        QA-38 scope rule, and the reason a global page is special: the
+        generation domain is ``('website_id', 'in', (False, website.id))``, so a
+        page *with* an owner belongs to exactly that index, while a page without
+        one appears in every website's index and must therefore clear every
+        cache.  Wiping all websites on a single owned-page write is what made one
+        tenant's edit expire everybody's cache.
+        """
         if any(not p.website_id for p in self):
             websites = self.env['website'].search([])
         else:

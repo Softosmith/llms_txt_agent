@@ -291,3 +291,28 @@ class TestLlmsTxtAgentHttp(HttpCase):
             self.assertTrue(website.llm_cache_last_updated,
                             f'{website.id}: cache timestamp must be stamped')
         self.assertIn('HTTP Test Company', self.website.llm_txt_cache)
+
+    def test_page_body_edit_reaches_anonymous_crawlers(self):
+        """QA-38 / S5 case 5.2 — an editor save must actually change the export.
+
+        The page *body* does not live on ``website.page``; it lives on the
+        delegated ``ir.ui.view`` (``website.page._inherits``, and ``arch`` is a
+        related field).  The module invalidates on ``website.page`` writes only,
+        so a body edit can slip through: the crawler keeps reading the cached
+        document that still holds the *old* copy.  This writes the arch the way
+        the Website editor does and asks the anonymous route for it.
+        """
+        warmed = self.url_open('/llms-full.txt')
+        self.assertEqual(warmed.status_code, 200)
+        self.assertIn('Body copy for the http test page.', warmed.text,
+                      'precondition: the warm cache must hold the original copy')
+
+        self.view.write({'arch_base': '<t t-name="test.http.page"><div><h1>HTTP Page</h1>'
+                                      '<p>Brand new body copy from the editor.</p></div></t>'})
+
+        edited = self.url_open('/llms-full.txt')
+        self.assertEqual(edited.status_code, 200)
+        self.assertIn('Brand new body copy from the editor.', edited.text,
+                      'a page-body edit must reach the anonymous crawler')
+        self.assertNotIn('Body copy for the http test page.', edited.text,
+                         'the stale copy must be gone, not merely appended to')
