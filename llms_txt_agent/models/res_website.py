@@ -27,6 +27,12 @@ LLM_CACHE_FIELDS = frozenset({
     'llm_txt_cache', 'llm_full_txt_cache', 'llm_cache_last_updated',
 })
 
+# Last language to try when nothing else resolves.  A crawler can ask for any
+# Accept-Language value, and ``Environment.lang`` raises UserError for a code
+# that is not an *active* ``res.lang`` -- so every candidate has to be validated
+# before it is used, with this one as the final fallback (QA-11, FINDINGS D-A).
+LLM_FALLBACK_LANG = 'en_US'
+
 
 class Website(models.Model):
     _inherit = 'website'
@@ -96,15 +102,56 @@ class Website(models.Model):
             self._invalidate_llms_cache()
         return res
 
+    def _get_llm_page_domain(self):
+        """The one domain that decides which pages may be exported at all.
+
+        QA-06 (FINDINGS D-E1) and QA-09 (D-E2).  The shipped module filtered on
+        ``is_published`` only, so an anonymous crawler was handed the full body
+        of pages the owner had locked behind a password, restricted to a staff
+        group, or marked "Indexed = No" -- and ``/llms/page/<id>.md`` used
+        ``sudo()`` on top of that, so none of the three could ever be refused.
+
+        Core precedent: ``website_page.py`` treats a page as publicly readable
+        when it is published, ``website_indexed``, not password/signed-in-only
+        and passes its group check (``odoo19/addons/website/models/website_page.py:205-218``).
+
+        ``visibility`` is written as an *allow-list* of "public" rather than as a
+        deny-list of the three bad values, so a visibility mode added by a later
+        Odoo release can never be exported by accident.  Note the ``False``: the
+        delegated ``ir.ui.view.visibility`` column is NULL for every one of the
+        1926 views shipped by ``website`` -- selection fields default to '' but
+        the ORM stores NULL -- and ``('visibility', '=', '')`` alone would match
+        *zero* pages, silently emptying the whole export.  Verified against the
+        real schema (``qa_evidence/logs/w3_probe_shell2.out``) and pinned by
+        ``test_gating_leaves_the_public_page_exportable``.
+        """
+        self.ensure_one()
+        return [
+            ('is_published', '=', True),
+            ('website_id', 'in', (False, self.id)),
+            ('llm_exclude', '=', False),
+            ('website_indexed', '=', True),
+            ('visibility', 'in', ('', False)),
+        ]
+
+    def _get_llm_exportable_page(self, page_id):
+        """Return the page as a recordset only if this website may export it.
+
+        Single source of truth for ``/llms/page/<id>.md``: the route and the two
+        index hooks cannot drift apart, which is what made the shipped guard
+        incomplete rather than merely wrong.
+        """
+        self.ensure_one()
+        if not self.llm_include_pages:
+            return self.env['website.page']
+        return self.env['website.page'].sudo().search(
+            [('id', '=', int(page_id))] + self._get_llm_page_domain(), limit=1)
+
     def _get_llms_txt_sections(self, base_url):
         """Hook method to collect sections for llms.txt. Extensible by other modules via super()."""
         sections = super()._get_llms_txt_sections(base_url) if hasattr(super(), '_get_llms_txt_sections') else []
         if self.llm_include_pages and 'website.page' in self.env:
-            page_domain = [
-                ('is_published', '=', True),
-                ('website_id', 'in', (False, self.id)),
-                ('llm_exclude', '=', False),
-            ]
+            page_domain = self._get_llm_page_domain()
             pages = self.env['website.page'].sudo().search(page_domain)
             # Prioritize website-specific pages over generic ones, then sort by URL
             sorted_pages = sorted(pages, key=lambda p: (0 if p.website_id else 1, p.url or ''))
@@ -130,11 +177,7 @@ class Website(models.Model):
         """Hook method to collect full markdown docs for llms-full.txt. Extensible via super()."""
         docs = super()._get_llms_full_txt_docs(base_url) if hasattr(super(), '_get_llms_full_txt_docs') else []
         if self.llm_include_pages and 'website.page' in self.env:
-            page_domain = [
-                ('is_published', '=', True),
-                ('website_id', 'in', (False, self.id)),
-                ('llm_exclude', '=', False),
-            ]
+            page_domain = self._get_llm_page_domain()
             pages = self.env['website.page'].sudo().search(page_domain)
             sorted_pages = sorted(pages, key=lambda p: (0 if p.website_id else 1, p.url or ''))
             seen_urls = set()
@@ -188,42 +231,84 @@ class Website(models.Model):
 
         return '\n\n---\n\n'.join(docs) + '\n'
 
-    def get_llms_txt_content(self):
-        """Returns llms.txt string, utilizing cache when enabled."""
+    def _llms_cache_read(self, field):
+        """Read a cache column under *exactly* the language being served.
+
+        This is the part QA-11 hinged on.  ``llm_txt_cache`` is
+        ``translate=True``, i.e. one jsonb column keyed by language code, and a
+        normal ORM read of a translated field **falls back to en_US** when the
+        current key is missing -- ``fields_textual.get_translation_fallback_langs``
+        returns ``('fr_FR', 'en_US')`` for French, and ``to_sql()`` compiles that
+        into ``COALESCE(col->>'fr_FR', col->>'en_US')``.  So ``if not
+        self.llm_txt_cache`` was never a per-language cold check: a French
+        crawler got a *cache hit* on the English document and regenerated
+        nothing, forever.  The question has to be asked of the one key the
+        response is about to serve.
+
+        ``field._get_stored_translations()`` is used rather than a hand-written
+        ``SELECT col->>%s`` because it **flushes the record first** -- raw SQL
+        does not trigger the ORM's pending-write flush any more (``odoo19/odoo/orm/fields_textual.py:210-224``),
+        and an unflushed read would serve a document from before the last save.
+        """
         self.ensure_one()
-        if self.llm_cache_ttl == 'realtime' or not self.llm_txt_cache:
-            content = self._generate_llms_txt()
-            if self.llm_cache_ttl != 'realtime':
-                self.sudo().write({
-                    'llm_txt_cache': content,
-                    'llm_cache_last_updated': fields.Datetime.now(),
-                })
-            return content
-        return self.llm_txt_cache
+        lang = self._llms_lang_code()
+        translations = self._fields[field]._get_stored_translations(self.sudo()) or {}
+        return translations.get(lang) or False
+
+    def get_llms_txt_content(self):
+        """Returns llms.txt string, utilizing cache when enabled.
+
+        The whole method runs in one validated language (``_llms_lang_code``):
+        reading *and* writing a translated column in an unvalidated context
+        either raises UserError or stores the document under a key no crawler can
+        ever ask for.
+        """
+        self.ensure_one()
+        website = self.with_context(lang=self._llms_lang_code())
+        if website.llm_cache_ttl == 'realtime':
+            return website._generate_llms_txt()
+        cached = website._llms_cache_read('llm_txt_cache')
+        if cached:
+            return cached
+        content = website._generate_llms_txt()
+        website.sudo().write({
+            'llm_txt_cache': content,
+            'llm_cache_last_updated': fields.Datetime.now(),
+        })
+        return content
 
     def get_llms_full_txt_content(self):
         """Returns llms-full.txt string, utilizing cache when enabled."""
         self.ensure_one()
-        if self.llm_cache_ttl == 'realtime' or not self.llm_full_txt_cache:
-            content = self._generate_llms_full_txt()
-            if self.llm_cache_ttl != 'realtime':
-                self.sudo().write({
-                    'llm_full_txt_cache': content,
-                    'llm_cache_last_updated': fields.Datetime.now(),
-                })
-            return content
-        return self.llm_full_txt_cache
+        website = self.with_context(lang=self._llms_lang_code())
+        if website.llm_cache_ttl == 'realtime':
+            return website._generate_llms_full_txt()
+        cached = website._llms_cache_read('llm_full_txt_cache')
+        if cached:
+            return cached
+        content = website._generate_llms_full_txt()
+        website.sudo().write({
+            'llm_full_txt_cache': content,
+            'llm_cache_last_updated': fields.Datetime.now(),
+        })
+        return content
 
     def action_rebuild_llms_cache(self):
-        """Manual admin action button to rebuild llms.txt & llms-full.txt cache."""
+        """Manual admin action button to rebuild llms.txt & llms-full.txt cache.
+
+        Every language gets its own pass (QA-11): a rebuild that only wrote the
+        language of the admin who pressed the button left each crawler-facing
+        key empty, so the first French visitor still paid for a full generation
+        -- and on a multi-language site that is the whole point of the cache.
+        """
         for website in self:
-            txt_content = website._generate_llms_txt()
-            full_content = website._generate_llms_full_txt()
-            website.sudo().write({
-                'llm_txt_cache': txt_content,
-                'llm_full_txt_cache': full_content,
-                'llm_cache_last_updated': fields.Datetime.now(),
-            })
+            for code in website._llms_cache_languages():
+                lang_website = website.sudo().with_context(lang=code)
+                lang_website.write({
+                    'llm_txt_cache': lang_website._generate_llms_txt(),
+                    'llm_full_txt_cache': lang_website._generate_llms_full_txt(),
+                })
+            website.sudo().write({'llm_cache_last_updated': fields.Datetime.now()})
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -241,6 +326,49 @@ class Website(models.Model):
         active_websites = self.search([('llm_enabled', '=', True)])
         active_websites.action_rebuild_llms_cache()
 
+    def _llms_lang_code(self):
+        """Resolve the one language code this website's document is served in.
+
+        QA-11 / QA-24.  Under HTTP the context language already *is* the
+        negotiated one -- ``http_routing`` puts ``request.lang.code`` into the
+        context in ``_frontend_pre_dispatch()`` (``odoo19/addons/http_routing/models/ir_http.py:514-518``),
+        after trying the URL, the ``frontend_lang`` cookie, then the session
+        language derived from ``Accept-Language``.  So reading the context is
+        enough, and this model stays free of ``odoo.http``.
+
+        Every candidate is validated against *active* ``res.lang`` rows because
+        ``Environment.lang`` raises UserError for an unknown code: without that
+        check a crawler sending ``Accept-Language: de`` on a site that has no
+        German would turn a 200 into a 500.
+        """
+        self.ensure_one()
+        Lang = self.env['res.lang'].sudo()
+        default_id = self.sudo()._get_cached('default_lang_id')
+        candidates = [
+            self.env.context.get('lang'),
+            Lang.browse(default_id).code if default_id else False,
+            LLM_FALLBACK_LANG,
+        ]
+        for code in candidates:
+            if code and Lang._get_code(code):
+                return code
+        # Nothing resolved (no default set, en_US archived): the first active
+        # language is still better than a crash.
+        active = list(Lang._get_active_by('code'))
+        return active[0] if active else LLM_FALLBACK_LANG
+
+    def _llms_cache_languages(self):
+        """Every language code a cache key may exist under.
+
+        Used by invalidation (which must sweep all of them) and by the rebuild
+        action.  ``en_US`` is added explicitly: it is the constant the HTTP layer
+        falls back to (``request.default_lang()`` -> ``DEFAULT_LANG``), so a key
+        under it can exist even on a site that archived it.
+        """
+        codes = set(self.env['res.lang'].sudo()._get_active_by('code'))
+        codes.add(LLM_FALLBACK_LANG)
+        return sorted(codes)
+
     def _invalidate_llms_cache(self):
         """Helper to clear cached documents when underlying content changes.
 
@@ -248,9 +376,19 @@ class Website(models.Model):
         survive, so Settings kept showing a confident, seconds-old "Cache Last
         Rebuilt" for a cache that no longer existed -- which is exactly how the
         crawler outage stayed invisible to the site owner.
+
+        The sweep is per language (FINDINGS D-A, QA-11, and the same trap as
+        QA-38).  ``llm_txt_cache`` is ``translate=True``, i.e. one jsonb column
+        keyed by language code, and ``write({'llm_txt_cache': False})`` clears
+        *only the key named by the context* -- ``jsonb_strip_nulls`` in
+        ``odoo/orm/models.py:3581-3612``.  The shipped single write therefore
+        left every other language serving its stale document forever, while the
+        one language the owner happened to be looking at looked correct.
         """
-        self.sudo().write({
-            'llm_txt_cache': False,
-            'llm_full_txt_cache': False,
-            'llm_cache_last_updated': False,
-        })
+        sudo_websites = self.sudo()
+        for code in self._llms_cache_languages():
+            sudo_websites.with_context(lang=code).write({
+                'llm_txt_cache': False,
+                'llm_full_txt_cache': False,
+            })
+        sudo_websites.write({'llm_cache_last_updated': False})

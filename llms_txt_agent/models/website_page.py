@@ -50,8 +50,13 @@ class WebsitePage(models.Model):
 
         lines = [f"# {title}", f"URL: {page_url}"]
 
-        if page.website_indexed is False:
-            lines.append("Robots: noindex")
+        # QA-09 / FINDINGS D-E2: this used to append "Robots: noindex" for a page
+        # with ``website_indexed = False``.  Prose inside the document is not a
+        # directive -- an AI crawler cannot enforce it -- and the response itself
+        # said ``X-Robots-Tag: all``, so the module was contradicting its own
+        # headers while leaking the whole body of a page its owner had marked
+        # "Indexed = No".  Such pages are now excluded from every export by
+        # ``website._get_llm_page_domain()``, which makes the line dead code.
 
         lines.append("")
 
