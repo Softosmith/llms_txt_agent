@@ -227,3 +227,67 @@ class TestLlmsTxtAgentHttp(HttpCase):
         full = self.website._generate_llms_full_txt()
         self.assertIn('# HTTP Test Company', full)
         self.assertIn('Body copy for the http test page.', full)
+
+    # ------------------------------------------------- W1: anonymous generation
+    # Tests below assert the intended behaviour of QA-02 and QA-05.  They were
+    # added after the QA register and are red on the shipped code.
+
+    def test_anonymous_body_matches_admin_body(self):
+        """QA-05 — an admin visit must not be the reason the endpoints work.
+
+        The outage is invisible to the owner because an authenticated request
+        heals the cache; the intended contract is that an anonymous crawler and
+        an administrator are served byte-identical documents from a cold cache.
+        """
+        def _create_admin_login():
+            groups = [self.env.ref('base.group_system').id,
+                      self.env.ref('base.group_user').id,
+                      self.env.ref('website.group_website_restricted_editor').id]
+            return self.env['res.users'].create({
+                'name': 'W1 QA Admin',
+                'login': 'w1_qa_admin',
+                'password': 'w1_qa_admin_pw',
+                'group_ids': [(6, 0, groups)],
+            })
+
+        anon = self.url_open('/llms.txt')
+        self.assertEqual(anon.status_code, 200, 'anonymous cold cache must be 200')
+
+        admin_user = _create_admin_login()
+        self.authenticate(admin_user.login, 'w1_qa_admin_pw')
+        admin = self.url_open('/llms.txt')
+        self.assertEqual(admin.status_code, 200, 'admin must be 200')
+
+        # rebuild the caches from scratch on a second cold round-trip so the
+        # comparison is generation-vs-generation, not cache-vs-generation.
+        self.website._invalidate_llms_cache()
+        self.logout()
+        anon2 = self.url_open('/llms.txt')
+        self.assertEqual(anon2.status_code, 200)
+        self.assertEqual(anon2.text, admin.text,
+                         'anonymous and admin output must be byte-identical')
+
+    def test_post_init_hook_warms_the_cache(self):
+        """QA-02 — a fresh install must not be broken for the first 6 hours.
+
+        The post-init hook has to populate both cached documents for every
+        website that has generation enabled, so the very first anonymous crawler
+        after install gets a 200 instead of a 403.
+        """
+        from odoo.addons.llms_txt_agent.hooks import _post_init_hook
+
+        self.website._invalidate_llms_cache()
+        self.website.llm_cache_last_updated = False
+        self.assertFalse(self.website.llm_txt_cache)
+        self.assertFalse(self.website.llm_full_txt_cache)
+
+        _post_init_hook(self.env)
+
+        for website in self.env['website'].search([('llm_enabled', '=', True)]):
+            self.assertTrue(website.llm_txt_cache,
+                            f'{website.id}: llms.txt cache must be warmed')
+            self.assertTrue(website.llm_full_txt_cache,
+                            f'{website.id}: llms-full.txt cache must be warmed')
+            self.assertTrue(website.llm_cache_last_updated,
+                            f'{website.id}: cache timestamp must be stamped')
+        self.assertIn('HTTP Test Company', self.website.llm_txt_cache)

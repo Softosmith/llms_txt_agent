@@ -93,4 +93,5 @@ Developed by Asad Ali at Softosmith (https://softosmith.com).
     'installable': True,
     'application': True,
     'auto_install': False,
+    'post_init_hook': '_post_init_hook',
 }

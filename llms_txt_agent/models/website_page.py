@@ -21,22 +21,30 @@ class WebsitePage(models.Model):
     )
 
     def get_llm_markdown(self, base_url=''):
-        """Generate markdown document representation of this page."""
+        """Generate markdown document representation of this page.
+
+        Every read goes through ``sudo()`` so the method is correct for *any*
+        caller, not only the two website generation hooks.  Generation happens
+        on a public request, where the requester has no read access to
+        ``website.page`` or to the delegated ``ir.ui.view`` (QA-01).  Nothing is
+        written here, so the elevation is read-only by construction.
+        """
         self.ensure_one()
-        title = self.name or self.url or 'Untitled Page'
-        page_url = f"{base_url.rstrip('/')}{self.url}" if self.url else base_url
+        page = self.sudo()
+        title = page.name or page.url or 'Untitled Page'
+        page_url = f"{base_url.rstrip('/')}{page.url}" if page.url else base_url
 
         lines = [f"# {title}", f"URL: {page_url}"]
 
-        if self.website_indexed is False:
+        if page.website_indexed is False:
             lines.append("Robots: noindex")
 
         lines.append("")
 
-        if self.llm_custom_description:
-            lines.append(self.llm_custom_description.strip())
+        if page.llm_custom_description:
+            lines.append(page.llm_custom_description.strip())
         else:
-            arch_content = self.arch_base or (hasattr(self, 'arch') and self.arch)
+            arch_content = page.arch_base or (hasattr(page, 'arch') and page.arch)
             if arch_content:
                 body_md = html_to_markdown(arch_content, base_url=base_url)
                 if body_md:

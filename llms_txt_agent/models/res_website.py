@@ -65,7 +65,7 @@ class Website(models.Model):
                 ('website_id', 'in', (False, self.id)),
                 ('llm_exclude', '=', False),
             ]
-            pages = self.env['website.page'].search(page_domain)
+            pages = self.env['website.page'].sudo().search(page_domain)
             # Prioritize website-specific pages over generic ones, then sort by URL
             sorted_pages = sorted(pages, key=lambda p: (0 if p.website_id else 1, p.url or ''))
             seen_urls = set()
@@ -95,7 +95,7 @@ class Website(models.Model):
                 ('website_id', 'in', (False, self.id)),
                 ('llm_exclude', '=', False),
             ]
-            pages = self.env['website.page'].search(page_domain)
+            pages = self.env['website.page'].sudo().search(page_domain)
             sorted_pages = sorted(pages, key=lambda p: (0 if p.website_id else 1, p.url or ''))
             seen_urls = set()
             for p in sorted_pages:
