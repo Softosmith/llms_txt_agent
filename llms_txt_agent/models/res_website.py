@@ -2,8 +2,11 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
+from datetime import timedelta
+
 from odoo import api, fields, models
 from .html_to_md import html_to_markdown
+from .llms_http import cache_control_for, max_age_seconds
 
 
 # Fields whose value is baked into the generated documents.  Writing any of them
@@ -333,11 +336,61 @@ class Website(models.Model):
             }
         }
 
+    def _get_llms_cache_control(self):
+        """The ``Cache-Control`` this website's documents must be served with.
+
+        QA-16 (FINDINGS D-F, S6, S12 G.7).  The string used to be hardcoded in
+        every controller -- ``public, max-age=3600`` on all four routes -- so
+        "Cached (Daily)" promised an hour to every CDN in front of the site, and
+        "Real-time / Dynamic" promised a storeable document that the module
+        generates again on every single request.  The label in Settings, the
+        header a crawler is told, and the interval the cron works on are now all
+        read from ``llms_http.CACHE_POLICY_BY_MODE``, in one place, from the same
+        field value.
+
+        Kept on the model rather than in the controller because the route handlers
+        have no opinion about caching to begin with (QA-25) and because the
+        companions ship their own copies of both files.
+        """
+        self.ensure_one()
+        return cache_control_for(self.llm_cache_ttl)
+
     @api.model
     def _cron_rebuild_llms_cache(self):
-        """Cron method to periodically rebuild cache for active websites."""
-        active_websites = self.search([('llm_enabled', '=', True)])
-        active_websites.action_rebuild_llms_cache()
+        """Rebuild the documents of websites whose cache has actually expired.
+
+        Two defects, and the shape of this loop is what closes both:
+
+        * QA-16 (FINDINGS D-F): the interval was a single opinion (six hours)
+          that matched neither "Cached (Hourly)" nor "Cached (Daily)", and the
+          method rebuilt *every* enabled website including real-time ones -- so a
+          site configured for on-demand generation ended up with cached
+          documents, contradicting the label its owner chose.  ``max_age_seconds``
+          is now the only source of both numbers: ``None`` (real-time) means
+          "this website is not the cron's business at all".
+        * QA-33 (FINDINGS D-AH): on a combined install three crons call this one
+          method, and each of them regenerated the byte-identical document back
+          to back -- three full generations per cycle for every website, which on
+          a large catalogue is a real cost, all of it thrown away.  The companions
+          cannot know the base module exists (no cross-module dependency), so the
+          fix cannot be "delete two crons"; it has to be idempotence, and a cache
+          that is only rebuilt when it is actually stale is exactly that.  The
+          freshness check below is what makes the 2nd and 3rd cron of an hour cost
+          nothing.
+
+        A future timestamp counts as fresh: the field is written by tests and by
+        imports as well as by the rebuild path, and a document that is not stale
+        yet must never be regenerated just because its clock is odd.
+        """
+        now = fields.Datetime.now()
+        for website in self.sudo().search([('llm_enabled', '=', True)]):
+            max_age = max_age_seconds(website.llm_cache_ttl)
+            if max_age is None:
+                continue  # real-time mode: the cron does not cache this website
+            last_updated = website.llm_cache_last_updated
+            if last_updated and now - last_updated < timedelta(seconds=max_age):
+                continue
+            website.action_rebuild_llms_cache()
 
     def _llms_lang_code(self):
         """Resolve the one language code this website's document is served in.

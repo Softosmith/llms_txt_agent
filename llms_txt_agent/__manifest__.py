@@ -4,7 +4,7 @@
 
 {
     'name': 'LLMs.txt Agent: Website Pages AI SEO (GEO/AEO for ChatGPT, Gemini, Perplexity)',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.1.0',
     'category': 'Website/Website',
     'summary': 'Get your website pages indexed on ChatGPT, Gemini, Perplexity & AI search engines. AI SEO / GEO / AEO llms.txt & Markdown generator.',
     'description': """

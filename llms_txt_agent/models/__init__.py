@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
 from . import html_to_md
+from . import llms_http
 from . import res_website
 from . import res_config_settings
 from . import website_page
