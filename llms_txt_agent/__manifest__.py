@@ -85,6 +85,7 @@ Developed by Asad Ali at Softosmith (https://softosmith.com).
         'data/ir_cron_data.xml',
         'views/res_config_settings_views.xml',
         'views/website_page_views.xml',
+        'views/website_page_properties_views.xml',
     ],
     'images': [
         'static/description/banner.png',

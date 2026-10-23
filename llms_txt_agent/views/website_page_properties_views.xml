@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- QA-12.  This is the screen an Odoo 19 website editor actually opens for
+         page settings: the frontend "Page Properties" dialog, which is built on
+         the transient model website.page.properties and whose view is fetched by
+         reference (`form_view_ref=website.website_page_properties_view_form`,
+         see odoo19/addons/website/static/src/components/dialog/page_properties.js:236).
+         Core's own controls - Indexed, Published, Visibility, Is a Template -
+         are all related fields written through here, so extending it is the
+         documented way in, and it is the only place the advertised "single
+         checkbox" was ever missing. -->
+    <record id="website_page_properties_view_form_inherit_llm" model="ir.ui.view">
+        <field name="name">website.page.properties.form.inherit.llm</field>
+        <field name="model">website.page.properties</field>
+        <field name="inherit_id" ref="website.website_page_properties_view_form"/>
+        <field name="arch" type="xml">
+            <!-- "Is a Template" is core's last control in the dialog group; anchor
+                 on it instead of "//group/*[last()]" so the insertion stays inside
+                 the group whatever else inherits this view later. -->
+            <xpath expr="//field[@name='is_new_page_template']" position="after">
+                <field name="llm_exclude"
+                       string="Exclude from AI crawlers"
+                       widget="boolean_toggle"
+                       options="{'autosave': False}"
+                       help="Omit this page from /llms.txt, /llms-full.txt and the per-page Markdown endpoints."/>
+                <field name="llm_custom_description"
+                       placeholder="Custom markdown description for AI search models (ChatGPT, Claude, Perplexity, Gemini). Leave blank to auto-generate from page content."/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

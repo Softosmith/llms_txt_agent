@@ -317,6 +317,19 @@ class Website(models.Model):
                 'message': 'Successfully regenerated llms.txt and llms-full.txt cache for the current website.',
                 'sticky': False,
                 'type': 'success',
+                # QA-40 / FINDINGS D-J.  The toast proved the rebuild happened
+                # while "Cache Last Rebuilt" went on showing the previous
+                # timestamp until the browser was reloaded by hand: the button
+                # runs on the transient settings record, whose related field was
+                # read once when the form was built and never re-read.  A
+                # display_notification action returns ``params['next']`` to the
+                # action service (odoo19/addons/web/static/src/webclient/actions/
+                # client_actions.js:23), so this reloads the screen after the
+                # toast instead of leaving the label stale.
+                'next': {
+                    'type': 'ir.actions.client',
+                    'tag': 'reload',
+                },
             }
         }
 

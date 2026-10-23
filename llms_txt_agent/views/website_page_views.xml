@@ -13,4 +13,63 @@
             </xpath>
         </field>
     </record>
+
+    <!-- QA-12, part two: a form view that no action references is invisible,
+         however correct it is.  Core's ir.actions.act_window
+         "website.action_website_pages_list" (Website -> Site -> Content -> Pages)
+         binds list + kanban only, its list rows carry action="open_website_url",
+         and its kanban card does the same - so the merged form above, and the
+         AI group inside it, could never be opened from the backend.
+
+         Rather than mutating core's action (an upgrade-incompatible change to a
+         record this module does not own), the classic screen is added next to it
+         under its own name.  The list is deliberately ours: reusing core's would
+         keep sending a click to the public page.  The form needs no binding -
+         with no view_id the client resolves the model's default form, which is
+         core's website_pages_form_view merged with the inheritance above. -->
+    <record id="llms_txt_pages_tree_view" model="ir.ui.view">
+        <field name="name">website.page.list.llms.txt</field>
+        <field name="model">website.page</field>
+        <!-- 200, on purpose: ir.ui.view.default_view() takes the *lowest*
+             priority (odoo19/odoo/addons/base/models/ir_ui_view.py:142,701), and
+             core's own website.page list sits at 99.  A smaller number here
+             would silently become the fallback list for every other screen that
+             resolves one, which is not ours to decide.  This action binds the
+             view by id, so it is used where it is wanted and nowhere else. -->
+        <field name="priority">200</field>
+        <field name="arch" type="xml">
+            <list string="AI Search Pages (llms.txt)" default_order="url asc, id asc">
+                <field name="name" string="Page Title"/>
+                <field name="url" string="Page URL"/>
+                <field name="website_id" groups="website.group_multi_website"/>
+                <field name="is_published" string="Published"/>
+                <field name="website_indexed" string="Indexed"/>
+                <field name="llm_exclude" string="Excluded from AI"/>
+                <field name="llm_custom_description" string="AI Description" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="llms_txt_pages_action" model="ir.actions.act_window">
+        <field name="name">AI Search Pages (llms.txt)</field>
+        <field name="res_model">website.page</field>
+        <field name="path">llms_txt_pages</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('llms_txt_pages_tree_view')}),
+            (0, 0, {'view_mode': 'form'}),
+        ]"/>
+        <field name="search_view_id" ref="website.website_pages_view_search"/>
+    </record>
+
+    <!-- website.page has one ACL row in core, for group_website_designer
+         (odoo19/addons/website/security/ir.model.access.csv:12), so a menu open
+         to every employee would show an empty list to everyone else and break on
+         save.  Same group, same reach as core's own Pages menu. -->
+    <menuitem id="llms_txt_pages_menu"
+        name="AI Search Pages"
+        parent="website.menu_content"
+        action="llms_txt_pages_action"
+        sequence="15"
+        groups="website.group_website_designer"/>
 </odoo>
