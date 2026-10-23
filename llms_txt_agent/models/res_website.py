@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from odoo import api, fields, models
 from .html_to_md import html_to_markdown
+from .llms_chain import chain_call, sort_sections
 from .llms_http import cache_control_for, max_age_seconds
 
 
@@ -151,8 +152,12 @@ class Website(models.Model):
             [('id', '=', int(page_id))] + self._get_llm_page_domain(), limit=1)
 
     def _get_llms_txt_sections(self, base_url):
-        """Hook method to collect sections for llms.txt. Extensible by other modules via super()."""
-        sections = super()._get_llms_txt_sections(base_url) if hasattr(super(), '_get_llms_txt_sections') else []
+        """Hook method to collect sections for llms.txt. Extensible by other modules via super().
+
+        QA-26: the parent is found by scanning the merged MRO (``chain_call``),
+        not by ``hasattr(super(), name)`` -- see ``models/llms_chain.py``.
+        """
+        sections = list(chain_call(super(), '_get_llms_txt_sections', base_url, default=[]))
         if self.llm_include_pages and 'website.page' in self.env:
             page_domain = self._get_llm_page_domain()
             pages = self.env['website.page'].sudo().search(page_domain)
@@ -177,8 +182,11 @@ class Website(models.Model):
         return sections
 
     def _get_llms_full_txt_docs(self, base_url):
-        """Hook method to collect full markdown docs for llms-full.txt. Extensible via super()."""
-        docs = super()._get_llms_full_txt_docs(base_url) if hasattr(super(), '_get_llms_full_txt_docs') else []
+        """Hook method to collect full markdown docs for llms-full.txt. Extensible via super().
+
+        Same MRO scan as the sections hook (QA-26).
+        """
+        docs = list(chain_call(super(), '_get_llms_full_txt_docs', base_url, default=[]))
         if self.llm_include_pages and 'website.page' in self.env:
             page_domain = self._get_llm_page_domain()
             pages = self.env['website.page'].sudo().search(page_domain)
@@ -203,8 +211,11 @@ class Website(models.Model):
         if self.llm_site_instructions:
             sections.append(self.llm_site_instructions.strip())
 
-        # Collect sections from this and any other installed modules
-        sections.extend(self._get_llms_txt_sections(base_url))
+        # Collect sections from this and any other installed modules, in the
+        # documented order (QA-26): which module's implementation runs first is
+        # decided by the install list, so the sequence has to be imposed here
+        # rather than inherited from the chain.
+        sections.extend(sort_sections(self._get_llms_txt_sections(base_url)))
 
         # Full Context Export Link
         sections.append(f"## Full Context Export\n\n- [Full Markdown Export]({base_url}/llms-full.txt): Complete concatenated markdown files for LLM context ingestion.")
@@ -212,7 +223,23 @@ class Website(models.Model):
         return '\n\n'.join(sections) + '\n'
 
     def _generate_llms_full_txt(self):
-        """Generates concatenated full markdown export (/llms-full.txt)."""
+        """Generates concatenated full markdown export (/llms-full.txt).
+
+        This is the reference header shape.  QA-17 found both companions
+        rebuilding their own and destroying the customer's summary and guidance,
+        and the fix there is a copy of these twelve lines rather than a
+        ``super()`` call -- each companion must work with the base module absent.
+        The copy is kept *identical*, title and summary defaults included: only
+        one of the three generators answers the route on a combined install and
+        Odoo picks it from the sorted addon names (QA-26), so a per-module
+        fallback sentence would make the crawler-facing header depend on which
+        addons the customer bought.  Two tests pin that: base's
+        ``test_the_default_header_is_identical_whichever_module_wins`` calls all
+        three implementations on one website and compares the documents they
+        return, and each companion's
+        ``test_full_export_uses_fallback_summary_when_none_is_set`` asserts the
+        shared sentence on its own database and on the combined one.
+        """
         self.ensure_one()
         base_url = self.get_base_url().rstrip('/')
         site_title = self.llm_site_title or self.name or 'Odoo Website'
@@ -225,7 +252,7 @@ class Website(models.Model):
         ]
 
         if self.llm_site_instructions:
-            header_parts.append(f"\n## LLM Guidance\n\n{self.llm_site_instructions.strip()}")
+            header_parts.append(f"## LLM Guidance\n\n{self.llm_site_instructions.strip()}")
 
         docs = ['\n\n'.join(header_parts)]
 

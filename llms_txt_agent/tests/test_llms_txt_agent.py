@@ -1,8 +1,32 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+import ast
+import os
+
 from odoo.tests.common import TransactionCase, tagged
 from odoo.addons.llms_txt_agent.models.html_to_md import html_to_markdown
+from odoo.addons.llms_txt_agent.models.llms_chain import chain_call, next_hook, sort_sections
+
+
+FAMILY = ('llms_txt_agent', 'llms_txt_agent_sale', 'llms_txt_agent_blog')
+
+
+def header_defaults(source):
+    """``{variable: (every distinct fallback expression assigned to it,)}``.
+
+    Reads the AST, not the text, for the same reason as the idiom probe below:
+    the docstrings describe the defaults they replaced, and prose must not be
+    able to satisfy a check about code.
+    """
+    found = {}
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id in ('site_title', 'site_summary'):
+            found.setdefault(target.id, set()).add(ast.unparse(node.value))
+    return {name: tuple(sorted(values)) for name, values in found.items()}
 
 
 @tagged('post_install', '-at_install')
@@ -143,3 +167,151 @@ class TestLlmsTxtAgent(TransactionCase):
         """Test that when disabled, endpoints and generation reflect state."""
         self.website.llm_enabled = False
         self.assertFalse(self.website.llm_enabled)
+
+
+@tagged('post_install', '-at_install')
+class TestBaseChainIdiom(TransactionCase):
+    """QA-26: the base module ships the same MRO scan and the same order.
+
+    The companions each got a spec file for this; the base module must not be
+    the one module still asking ``hasattr(super(), name)``, because on a
+    combined install it is the layer at the *end* of the chain -- the one whose
+    wrong answer silently truncates the document.
+    """
+
+    HOOKS = ('_get_llms_txt_sections', '_get_llms_full_txt_docs')
+
+    def _source(self):
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(package, 'models', 'res_website.py')
+        with open(path, encoding='utf-8') as handle:
+            return handle.read()
+
+    def _hasattr_super_probes(self, source):
+        """Every ``hasattr(super(), ...)`` *call*, found in the AST not the text.
+
+        Substring searching would also flag the docstrings that name the idiom
+        this replaced; the assertion is about code, so that is what it reads.
+        """
+        probes = []
+        for node in ast.walk(ast.parse(source)):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == 'hasattr' and node.args
+                    and isinstance(node.args[0], ast.Call)
+                    and isinstance(node.args[0].func, ast.Name)
+                    and node.args[0].func.id == 'super'):
+                probes.append(ast.unparse(node))
+        return probes
+
+    def test_res_website_no_longer_probes_super_with_hasattr(self):
+        source = self._source()
+        self.assertEqual(self._hasattr_super_probes(source), [],
+                         'the fragile super() probe must be gone')
+        self.assertIn('from .llms_chain import chain_call', source)
+
+    def test_both_hooks_reach_the_parent_through_chain_call(self):
+        source = self._source()
+        for hook in self.HOOKS:
+            self.assertIn(
+                "chain_call(super(), '%s'" % hook, source,
+                '%s must chain with the shared helper' % hook)
+
+    def _family_source(self, module):
+        """``res_website.py`` of a sibling addon, read from the vendor checkout."""
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        addons_root = os.path.dirname(os.path.dirname(package))
+        path = os.path.join(addons_root, module, module, 'models', 'res_website.py')
+        if not os.path.isfile(path):
+            return None
+        with open(path, encoding='utf-8') as handle:
+            return handle.read()
+
+    def test_the_three_modules_fall_back_to_the_same_header_text(self):
+        """QA-26, found by the companion parity spec on a combined database.
+
+        ``_generate_llms_txt`` and ``_generate_llms_full_txt`` exist in all three
+        addons, and only one of them answers the route: Odoo picks the layer
+        nearest the base model in the merged ``website`` MRO, which it derives
+        from the sorted *names* of the installed addons.  So a default tagline
+        written per module ("…online store and product catalog…" in the eCommerce
+        companion, "…blog and articles…" in the Blog one) makes the first lines
+        of the customer's ``/llms.txt`` depend on which other addon happened to
+        be bought -- nothing else changes, the file name does.
+
+        The default is what a crawler sees when the owner left Site Summary
+        empty, so the three copies now fall back to one identical sentence and
+        this pins it, in the same way the copy-hash tests pin ``llms_chain.py``.
+        """
+        tables = {}
+        for module in FAMILY:
+            source = self._family_source(module)
+            if source is None:
+                self.skipTest('this comparison needs the vendor checkout')
+            defaults = header_defaults(source)
+            for name in ('site_title', 'site_summary'):
+                values = defaults.get(name)
+                self.assertTrue(
+                    values, '%s builds its header without a %s default' % (module, name))
+                self.assertEqual(
+                    len(values), 1,
+                    '%s uses two different %s defaults, so /llms.txt and '
+                    '/llms-full.txt disagree: %s' % (module, name, values))
+                tables['%s.%s' % (module, name)] = values[0]
+        for name in ('site_title', 'site_summary'):
+            per_module = {
+                key: value for key, value in sorted(tables.items())
+                if key.endswith('.' + name)
+            }
+            self.assertEqual(
+                len(set(per_module.values())), 1,
+                'the header %s default depends on which addon wins the merged '
+                'website MRO: %s' % (name, per_module))
+
+    def test_next_hook_stops_at_the_end_of_a_single_module_chain(self):
+        """A base-only database has exactly one implementation: no parent, no crash."""
+        class Root:
+            pass
+
+        class Base(Root):
+            def hook(self):
+                return next_hook(super(), 'hook')
+
+        self.assertIsNone(Base().hook())
+
+    def test_chain_call_reaches_a_parent_that_the_old_guard_also_found(self):
+        class Root:
+            def hook(self):
+                return ['root']
+
+        class Base(Root):
+            def hook(self):
+                return chain_call(super(), 'hook', default=[]) + ['base']
+
+        self.assertEqual(Base().hook(), ['root', 'base'])
+
+    def test_sort_sections_holds_the_documented_order(self):
+        sections = [
+            '## Blog Articles\n\n- a',
+            '## Full Context Export\n\n- f',
+            '## Website Pages\n\n- p',
+            '## eCommerce Catalog Products\n\n- e',
+        ]
+        self.assertEqual(
+            sort_sections(sections),
+            [
+                '## Website Pages\n\n- p',
+                '## eCommerce Catalog Products\n\n- e',
+                '## Blog Articles\n\n- a',
+                '## Full Context Export\n\n- f',
+            ])
+
+    def test_sort_sections_keeps_foreign_sections_last_and_in_order(self):
+        """A third-party module's sections are not dropped or shuffled."""
+        sections = [
+            '## Partners\n\n- b',
+            '## Blog Articles\n\n- a',
+            '## Awards\n\n- c',
+        ]
+        self.assertEqual(
+            sort_sections(sections),
+            ['## Blog Articles\n\n- a', '## Partners\n\n- b', '## Awards\n\n- c'])
