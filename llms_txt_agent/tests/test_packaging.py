@@ -205,4 +205,44 @@ class TestPackaging(TransactionCase):
         self.assertEqual(unused, [],
                          'static/description carries unused files: %s' % unused)
 
+    def test_the_manifest_rst_description_parses_cleanly(self):
+        """The manifest ``description`` is reStructuredText, and Odoo does render it.
+
+        ``ir_module_module._compute_description_html``
+        (``odoo19/odoo/addons/base/models/ir_module.py:188-209``) takes the
+        ``static/description/index.html`` when present and otherwise pipes this
+        string through docutils with these same overrides -- which is the path the
+        two companions ran on before W8 added their listings, and the path they
+        fall back to the moment one is dropped.  A parse error there is a visible
+        product defect, so keep the prose clean rather than unpinned.
+        """
+        import io
+
+        from docutils.core import publish_string
+
+        raw = self._manifest().get('description') or ''
+        self.assertTrue(raw.strip(), '%s ships an empty manifest description' % MODULE)
+        stream = io.StringIO()
+        try:
+            publish_string(
+                source=raw,
+                writer_name='html4css1',
+                settings_overrides={
+                    'embed_stylesheet': False,
+                    'doctitle_xform': False,
+                    'output_encoding': 'unicode',
+                    'xml_declaration': False,
+                    'file_insertion_enabled': False,
+                    # docutils wants the numeric levels here, not the names.
+                    'report_level': 2,   # WARNING and above
+                    'halt_level': 4,     # SEVERE
+                    'warning_stream': stream,
+                },
+            )
+        except Exception as exc:      # a SEVERE parse error raises SystemMessage
+            stream.write('\n%r' % (exc,))
+        self.assertEqual(stream.getvalue().strip(), '',
+                         'the manifest description is not valid reStructuredText:\n%s'
+                         % stream.getvalue())
+
 
