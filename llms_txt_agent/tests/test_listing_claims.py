@@ -88,7 +88,9 @@ HYPE_PATTERNS = (
     ('latency figure', re.compile(r'\b\d+\s?ms\b|\bmicroseconds?\b|\bmilliseconds\b'
                                   r'|\bin under \d+\b|\bblazing\b|\bsub-?\d+\b', re.I)),
     ('outcome promise', re.compile(r'\bmore likely\b|\bmost likely\b|\bguarantee\w*\b'
-                                   r'|\bproven\b|\bwill rank\b|\bboost\w*\b', re.I)),
+                                   r'|\bproven\b|\bwill rank\b|\bboost\w*\b'
+                                   r'|\bindexed on\b|\brecommended by\b|\bcited\b'
+                                   r'|\bcite you\b|\brecommend your\b', re.I)),
 )
 
 

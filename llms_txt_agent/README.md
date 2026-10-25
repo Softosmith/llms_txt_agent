@@ -6,7 +6,7 @@
 
 Developed by **Asad Ali** at **[Softosmith.com](https://softosmith.com)**.
 
-Get your Odoo website pages indexed, crawled, and recommended by **ChatGPT**, **Gemini**, **Perplexity**, **Claude**, **Grok**, **Copilot**, and every other AI search engine. Automatically publish a standards-compliant `/llms.txt`, a full `/llms-full.txt` context export, and clean per-page `.md` Markdown endpoints that AI crawlers can accurately read and cite. Depends only on the `website` app — no eCommerce or Blog setup required.
+Publish your Odoo website pages for **ChatGPT**, **Gemini**, **Perplexity**, **Claude**, **Grok**, **Copilot**, and the other AI assistants that crawl the web. The app serves a standards-compliant `/llms.txt`, a full `/llms-full.txt` context export, and clean per-page `.md` Markdown endpoints, so a crawler that arrives reads your published pages instead of your template. Which sources an assistant cites is its own decision — this app only makes yours readable. Depends on the `website` app alone — no eCommerce or Blog setup required.
 
 Running an online store or blog? Our companion standalone apps (**LLMs.txt Agent: eCommerce Products AI SEO** for `website_sale` and **LLMs.txt Agent: Blog & News AI SEO** for `website_blog`) operate independently or combine seamlessly into the same `/llms.txt`.
 

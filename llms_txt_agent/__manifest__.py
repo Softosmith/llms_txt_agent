@@ -6,13 +6,13 @@
     'name': 'LLMs.txt Agent: Website Pages AI SEO (GEO/AEO for ChatGPT, Gemini, Perplexity)',
     'version': '19.0.1.1.0',
     'category': 'Website/Website',
-    'summary': 'Get your website pages indexed on ChatGPT, Gemini, Perplexity & AI search engines. AI SEO / GEO / AEO llms.txt & Markdown generator.',
+    'summary': 'Publish your website pages as AI SEO / GEO / AEO llms.txt & Markdown that ChatGPT, Gemini and Perplexity can read.',
     'description': """
 LLMs.txt Agent: Website Pages AI SEO
 ====================================
-Your comprehensive tool for getting your Odoo website pages indexed,
-crawled, and recommended by ChatGPT, Gemini, Perplexity, Claude, Grok, Copilot, Apple
-Intelligence, and every other LLM and AI search engine. One-click AI SEO (GEO / AEO)
+Everything you need to publish your Odoo website pages for ChatGPT, Gemini,
+Perplexity, Claude, Grok, Copilot, Apple Intelligence, and the other LLMs and AI
+assistants that crawl the web. One-click AI SEO (GEO / AEO)
 for Odoo: automatically publish a standards-compliant `llms.txt`, a full `llms-full.txt`
 context export, and clean per-page Markdown endpoints that AI crawlers can actually read.
 
@@ -33,8 +33,8 @@ for recommendations instead of clicking through search results. These AI assista
 can't run your JavaScript or click "read more" — they need clean, structured,
 machine-readable text. If your Odoo site doesn't offer it, you get skipped or
 misquoted. This app follows the emerging `llms.txt` open standard (think robots.txt +
-sitemap.xml, but written for LLMs) so every AI crawler gets exactly what it needs to
-index, cite, and recommend your site accurately.
+sitemap.xml, but written for LLMs) so every AI crawler gets what it needs to read
+your site as you wrote it.
 
 Key Features:
 -------------
@@ -63,7 +63,7 @@ Key Features:
 * **Multi-Language Support**: Site title, summary, LLM guidance, and per-page AI
   descriptions are fully translatable with Odoo's standard translation tools — AI
   crawlers reading a translated page get the matching translated content.
-* **Get Recommended By AI**: AI assistants are handed structured, noise-free Markdown
+* **Written for AI Readers**: AI assistants are handed structured, noise-free Markdown
   rather than raw HTML, so what they read is what you published.
 
 Keywords: llms.txt, llms.txt generator, AI SEO, GEO, Generative Engine Optimization,
