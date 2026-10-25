@@ -16,7 +16,7 @@ Running an online store or blog? Our companion standalone apps (**LLMs.txt Agent
 
 * **Automated `/llms.txt` & `/llms-full.txt` Endpoints**: Dynamically generates and serves both files following the `llms.txt` open standard at your website root, plus `/llms/page/<id>.md` per-page Markdown endpoints.
 * **Smart HTML-to-Markdown Parser**: Converts Odoo website HTML pages into clean GitHub-Flavored Markdown (preserving headings, lists, tables, and links while stripping scripts, navigation, and markup noise).
-* **High-Performance Caching & Auto-Sync**: Serves pre-cached responses in under 5ms, with scheduled cron rebuilds (hourly, daily, or real-time) and automatic cache invalidation whenever pages are created, edited, or unpublished.
+* **Caching & Auto-Sync**: Cached modes answer a crawler from the pre-built document instead of regenerating the whole export on every request, with scheduled rebuilds (hourly, daily, or real-time) and cache invalidation scoped to the website whose pages you edited.
 * **Granular Exclusions & Custom AI Prompts**: Exclude specific pages from AI crawlers or write custom prompt-optimized Markdown descriptions directly on any `website.page` record.
 * **Multi-Website & Multi-Language Support**: Configure Site Title, Site Summary, LLM Guidance, and Cache Mode independently per website, with full Odoo translation support.
 

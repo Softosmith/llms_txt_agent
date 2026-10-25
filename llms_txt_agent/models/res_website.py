@@ -26,7 +26,7 @@ LLM_CONTENT_FIELDS = frozenset({
 # Fields that *are* the cache.  Writing them must never invalidate: the read
 # path fills the cache through this same ``write()``, and without this guard the
 # write would wipe what it just stored, so every crawler request would regenerate
-# from scratch (the promised "<5 ms cached response" would never exist).
+# from scratch, which would leave the cached mode with nothing to cache.
 LLM_CACHE_FIELDS = frozenset({
     'llm_txt_cache', 'llm_full_txt_cache', 'llm_cache_last_updated',
 })
@@ -71,7 +71,8 @@ class Website(models.Model):
         ('hourly', 'Cached (Hourly Rebuild)'),
         ('daily', 'Cached (Daily Rebuild)'),
     ], string="Generation Mode", default='hourly', required=True,
-        help="Cached mode serves pre-built responses instantly (<5ms). Real-time builds on demand.")
+        help="Cached mode serves the pre-built document without regenerating it; "
+             "real-time builds it on every request.")
 
     llm_txt_cache = fields.Text(
         string="Cached llms.txt Content",

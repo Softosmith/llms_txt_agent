@@ -22,8 +22,8 @@ Built specifically for Odoo **Website** pages, content, and landing pages. Requi
 only the Odoo `website` app — zero eCommerce or Blog setup required.
 
 If you also run an online store or blog, our companion standalone apps:
-- **LLMs.txt Agent: eCommerce Store** (for `website_sale` product catalogs)
-- **LLMs.txt Agent: Blog & News** (for `website_blog` articles)
+- **LLMs.txt Agent: eCommerce Products AI SEO** (for `website_sale` product catalogs)
+- **LLMs.txt Agent: Blog & News AI SEO** (for `website_blog` articles)
 operate 100% independently or combine seamlessly into the same `/llms.txt` without any mutual dependencies.
 
 Why AI SEO (GEO/AEO) matters now:
@@ -39,7 +39,9 @@ index, cite, and recommend your site accurately.
 Key Features:
 -------------
 * **1-Click Setup**: Enable AI Search SEO from Website Settings and your `/llms.txt`
-  is live instantly — no manual file uploads, no separate hosting.
+  is served from your website root — the cache is warmed during installation, so the
+  first anonymous crawler request is answered rather than rejected. No manual file
+  uploads, no separate hosting.
 * **Automated /llms.txt & /llms-full.txt Endpoints**: Dynamically generates and serves
   both files adhering to the official `llms.txt` standard specification, so AI tools
   such as ChatGPT, Gemini, Perplexity, Claude, Grok, and Copilot can discover your site.
@@ -49,8 +51,9 @@ Key Features:
 * **Smart HTML-to-Markdown Parser**: Converts Odoo Website HTML pages and landing
   pages into clean GitHub-Flavored Markdown that AI models parse and extract
   exact answers from instead of guessing.
-* **High-Performance Caching**: Instant response times (<5ms) with pre-cached content,
-  so AI crawlers never wait on your live database.
+* **Caching**: Cached modes answer a crawler from the pre-built document instead of
+  regenerating the whole export on every request, and the rebuild schedule follows the
+  mode you picked.
 * **Granular Exclusions & Prompt Tuning**: Exclude specific website pages
   from AI crawlers, or write custom prompt-optimized descriptions per page.
 * **Backend Settings & Instant Preview**: Integrated Website Configuration panel with
@@ -60,8 +63,8 @@ Key Features:
 * **Multi-Language Support**: Site title, summary, LLM guidance, and per-page AI
   descriptions are fully translatable with Odoo's standard translation tools — AI
   crawlers reading a translated page get the matching translated content.
-* **Get Recommended By AI**: Structured, noise-free content is far more likely to be
-  the source an AI assistant actually cites and recommends to its users.
+* **Get Recommended By AI**: AI assistants are handed structured, noise-free Markdown
+  rather than raw HTML, so what they read is what you published.
 
 Keywords: llms.txt, llms.txt generator, AI SEO, GEO, Generative Engine Optimization,
 AEO, Answer Engine Optimization, AI visibility, AI search, get indexed by AI, ChatGPT
@@ -89,7 +92,10 @@ Developed by Asad Ali at Softosmith (https://softosmith.com).
     ],
     'images': [
         'static/description/banner.png',
-        'static/description/icon.png',
+        'static/description/screenshot_settings.png',
+        'static/description/screenshot_page_control.png',
+        'static/description/screenshot_pages_list.png',
+        'static/description/screenshot_output.png',
     ],
     'installable': True,
     'application': True,

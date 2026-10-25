@@ -9,3 +9,5 @@ from . import test_http_contract
 from . import test_html_to_md
 from . import test_ui_reachability
 from . import test_combined_install
+from . import test_listing_claims
+from . import test_packaging

@@ -19,7 +19,6 @@
                  the group whatever else inherits this view later. -->
             <xpath expr="//field[@name='is_new_page_template']" position="after">
                 <field name="llm_exclude"
-                       string="Exclude from AI crawlers"
                        widget="boolean_toggle"
                        options="{'autosave': False}"
                        help="Omit this page from /llms.txt, /llms-full.txt and the per-page Markdown endpoints."/>

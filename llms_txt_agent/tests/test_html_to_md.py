@@ -527,7 +527,7 @@ class TestHtmlToMarkdownFixes(TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestHtmlToMarkdownCopiesInSync(TransactionCase):
-    """QA-34 / D-Z: three shipped copies, and drift is now a failing test.
+    """QA-34 / D-Z: three shipped copies of each shared model file, drift = red.
 
     The addons must stay dependency-free from one another (that is the product
     decision behind the duplication), so the copies stay -- but the brief requires
@@ -542,46 +542,61 @@ class TestHtmlToMarkdownCopiesInSync(TransactionCase):
         'llms_txt_agent_sale',
         'llms_txt_agent_blog',
     )
+    # Every models/ file that all three addons ship a byte copy of, not just the
+    # parser: http helpers (W5) and the hook chain (W7) drift the same way and
+    # the same product decision -- no dependency between the addons -- is why.
+    SHARED_FILES = (
+        'html_to_md.py',
+        'llms_http.py',
+        'llms_chain.py',
+    )
 
-    def _paths(self):
-        """``<addons_root>/<module>/<module>/models/html_to_md.py`` for all three."""
+    def _paths(self, filename):
+        """``<addons_root>/<module>/<module>/models/<filename>`` for all three."""
         # __file__ is <addons>/<mod>/<mod>/tests/<this file>.
         package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         addons_root = os.path.dirname(os.path.dirname(package_dir))
         paths = {}
         for module in self.COPIES:
-            path = os.path.join(addons_root, module, module, 'models', 'html_to_md.py')
+            path = os.path.join(addons_root, module, module, 'models', filename)
             if not os.path.isfile(path):
                 return None
             paths[module] = path
         return paths
 
-    def test_the_three_parser_copies_are_byte_identical(self):
-        paths = self._paths()
-        if paths is None:
-            self.skipTest('this database has only one of the three addons installed; '
-                          'the copy-sync check needs the vendor checkout')
-        digests = {
-            module: hashlib.sha256(open(path, 'rb').read()).hexdigest()
-            for module, path in sorted(paths.items())
-        }
+    def test_the_three_shared_model_copies_are_byte_identical(self):
+        drifted = {}
+        for filename in self.SHARED_FILES:
+            paths = self._paths(filename)
+            if paths is None:
+                self.skipTest('this database has only one of the three addons installed; '
+                              'the copy-sync check needs the vendor checkout')
+            digests = {
+                module: hashlib.sha256(open(path, 'rb').read()).hexdigest()
+                for module, path in sorted(paths.items())
+            }
+            if len(set(digests.values())) != 1:
+                drifted[filename] = digests
         self.assertEqual(
-            len(set(digests.values())), 1,
-            'html_to_md.py copies have drifted: %s' % digests)
+            drifted, {},
+            'shared model copies have drifted (byte-identical is the contract): %s' % drifted)
 
-    def test_the_parser_copy_has_no_odoo_import(self):
-        """The QA harness loads this file with importlib and no database.
+    def test_no_shared_copy_imports_odoo(self):
+        """The QA harness loads these files with importlib and no database.
 
         Checked line by line rather than by importing the module: an ``odoo`` import
         at parser import time is exactly what this asserts against, so the check
-        cannot itself require a registry.
+        cannot itself require a registry -- and importing them inside a running
+        server would prove nothing, because ``odoo`` is already in ``sys.modules``.
         """
         package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(package_dir, 'models', 'html_to_md.py')
-        with open(path, encoding='utf-8') as handle:
-            source = handle.read()
-        for line in source.splitlines():
-            if line.startswith(('import ', 'from ')):
-                self.assertNotIn('odoo', line,
-                                 'the parser gained a dependency: %r' % line)
-        self.assertIn('html.parser', source)
+        for filename in self.SHARED_FILES:
+            path = os.path.join(package_dir, 'models', filename)
+            with open(path, encoding='utf-8') as handle:
+                source = handle.read()
+            for line in source.splitlines():
+                if line.startswith(('import ', 'from ')):
+                    self.assertNotIn('odoo', line,
+                                     '%s gained a dependency: %r' % (filename, line))
+            if filename == 'html_to_md.py':
+                self.assertIn('html.parser', source)

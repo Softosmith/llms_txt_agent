@@ -24,7 +24,11 @@
         </div>
 
         <div class="oe_span12 text-center mb-5">
-            <img src="get_recommended.png" class="img-fluid rounded shadow-sm" alt="AI assistants like ChatGPT, Gemini, Claude and Perplexity recommending a page from an Odoo website indexed by LLMs.txt Agent"/>
+            <p class="text-muted" style="max-width: 820px; margin: 0 auto;">
+                This app publishes the files themselves. Every screenshot below is a capture
+                taken from a running Odoo 19 instance &mdash; the settings panel, the page
+                form, and the plain-text files fetched over HTTP &mdash; not a mock-up.
+            </p>
         </div>
     </div>
 </section>
@@ -71,9 +75,10 @@
             <div class="p-4 border rounded-3 h-100 bg-white shadow-sm text-center" style="min-height: 165px;">
                 <h4 class="fw-bold text-primary"><i class="fa fa-file-text-o me-2"></i>Website Pages</h4>
                 <p class="text-muted small mb-0">
-                    Indexes all published <code>website.page</code> records, landing
-                    pages, and service pages for AI search immediately &mdash; no
-                    eCommerce or Blog setup required.
+                    Every published <code>website.page</code> &mdash; landing pages,
+                    service pages, company information &mdash; is in the index the moment
+                    the setting is on, for anonymous crawlers and logged-in visitors
+                    alike. No eCommerce or Blog setup required.
                 </p>
             </div>
         </div>
@@ -82,8 +87,11 @@
             <div class="p-4 border rounded-3 h-100 bg-white shadow-sm text-center" style="min-height: 165px;">
                 <h4 class="fw-bold text-primary"><i class="fa fa-sliders me-2"></i>Per-Page AI Control</h4>
                 <p class="text-muted small mb-0">
-                    Write custom AI prompt summaries per page or exclude private and
-                    utility pages from <code>/llms.txt</code> with a single checkbox.
+                    The <b>Exclude from llms.txt</b> toggle and the
+                    <b>Custom AI Description (Markdown)</b> field sit in the frontend
+                    <b>Page Properties</b> dialog and in the page form, and this app adds
+                    an <b>AI Search Pages</b> screen under the Website app's content menu
+                    with both as list columns.
                 </p>
             </div>
         </div>
@@ -114,8 +122,9 @@
                 <h4 class="fw-bold text-primary"><i class="fa fa-comments-o me-2"></i>Get cited by AI chatbots</h4>
                 <p class="text-muted small mb-0">
                     Generative Engine Optimization (GEO) is about being the source an AI
-                    assistant actually quotes. Structured, noise-free content is far
-                    more likely to be picked up and cited correctly than raw HTML.
+                    assistant actually quotes. This app hands those assistants clean
+                    Markdown instead of a page of HTML boilerplate, which is the form
+                    they can read and quote without parsing around a template.
                 </p>
             </div>
         </div>
@@ -157,17 +166,6 @@
     </div>
 </section>
 
-<section class="oe_container">
-    <div class="oe_row oe_spaced">
-        <div class="oe_span12 text-center mb-4">
-            <h3 class="oe_slogan">1-Click Setup, Automatic Sync</h3>
-        </div>
-        <div class="oe_span12 text-center mb-5">
-            <img src="hero.png" class="img-fluid rounded shadow-sm" alt="How LLMs.txt Agent turns your Odoo website pages into llms.txt and Markdown that AI assistants read and cite"/>
-        </div>
-    </div>
-</section>
-
 <section class="oe_container oe_dark">
     <div class="oe_row oe_spaced">
         <div class="oe_span12 text-center">
@@ -181,10 +179,12 @@
                 <img src="feature_llmstxt.png" width="72" height="72" class="mb-3" alt="Automated llms.txt endpoint"/>
                 <h4 class="fw-bold">1-Click /llms.txt Setup</h4>
                 <p class="text-muted small mb-0">
-                    Toggle it on in Website Settings and a clean, standards-compliant
-                    <code>llms.txt</code> is live at your website root instantly &mdash;
-                    site summary, LLM guidance, and published website pages included
-                    automatically.
+                    Toggle it on in Website Settings and a standards-shaped
+                    <code>llms.txt</code> answers at your website root &mdash; site
+                    summary, LLM guidance, and your published pages included. The cache
+                    is warmed while the module installs, so the first anonymous crawler
+                    request is served rather than rejected, with no file to upload and no
+                    separate hosting.
                 </p>
             </div>
         </div>
@@ -206,9 +206,11 @@
                 <img src="feature_cache.png" width="72" height="72" class="mb-3" alt="High performance caching and automatic sync"/>
                 <h4 class="fw-bold">Automatic Sync &amp; Caching</h4>
                 <p class="text-muted small mb-0">
-                    Pre-cached content served in under 5ms, rebuilt automatically
-                    &mdash; hourly, daily, or real-time &mdash; whenever website pages
-                    are created, published, or edited.
+                    Pick <b>Generation &amp; Cache Mode</b>: cached with an hourly rebuild,
+                    cached daily, or rebuilt on every request. A cache hit is a single
+                    field read, so the crawl never waits on your live database &mdash; and
+                    editing, publishing, or excluding a page invalidates the cache for the
+                    website you edited, not for every website in the database.
                 </p>
             </div>
         </div>
@@ -230,9 +232,9 @@
             <div class="p-4 border rounded-3 h-100 bg-white" style="min-height: 150px;">
                 <h4 class="fw-bold"><i class="fa fa-eye-slash me-2"></i>Granular Exclusions &amp; Prompt Tuning</h4>
                 <p class="text-muted small mb-0">
-                    Exclude specific website pages from AI crawlers, or write custom
-                    prompt-optimized descriptions directly from the standard Odoo
-                    <code>website.page</code> form view.
+                    Exclude a page from AI crawlers, or write a custom prompt-optimized
+                    Markdown description for it, from the frontend <b>Page Properties</b>
+                    dialog and from the page form &mdash; no developer step in between.
                 </p>
             </div>
         </div>
@@ -268,14 +270,22 @@
     <div class="oe_row oe_spaced">
         <div class="oe_span12 text-center">
             <h3 class="oe_slogan">Configure it in one screen</h3>
-            <p class="text-muted">
-                Website &rsaquo; Configuration &rsaquo; Settings &rsaquo; AI Search SEO
-                (llms.txt &amp; Markdown). Toggle it on, write a short site summary and
-                LLM guidance prompt, and pick a cache mode.
+            <p class="text-muted" style="max-width: 900px; margin: 0 auto;">
+                Open <b>Website &rsaquo; Configuration &rsaquo; Settings</b> and the
+                <b>AI Search SEO (llms.txt &amp; Markdown)</b> block sits under
+                <i>Tracking &amp; SEO</i>: a master switch, <b>Site Title</b>,
+                <b>Site Summary / Tagline</b>, <b>LLM Guidance / Prompt</b>, the
+                <b>Include Published Website Pages</b> toggle, and
+                <b>Generation &amp; Cache Mode</b> &mdash; <i>Real-time / Dynamic</i>,
+                <i>Cached (Hourly Rebuild)</i> or <i>Cached (Daily Rebuild)</i>. In a
+                cached mode the panel also shows <b>Cache Last Rebuilt</b> next to a
+                <b>Rebuild Cache Now</b> button, and both files can be opened straight
+                from the <b>Preview /llms.txt</b> and <b>Preview /llms-full.txt</b>
+                buttons. Everything is stored per website.
             </p>
         </div>
         <div class="oe_span12 text-center">
-            <img src="screenshot_settings.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="AI Search SEO settings panel in Odoo Website configuration"/>
+            <img src="screenshot_settings.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search SEO (llms.txt and Markdown) block in Odoo 19 Website settings, as rendered by the module"/>
         </div>
     </div>
 </section>
@@ -283,14 +293,40 @@
 <section class="oe_container oe_dark">
     <div class="oe_row oe_spaced">
         <div class="oe_span12 text-center">
-            <h3 class="oe_slogan">The real output, live on your site</h3>
-            <p class="text-muted">
-                A real <code>/llms.txt</code> response &mdash; the exact plain-text file
-                AI crawlers fetch from your website root.
+            <h3 class="oe_slogan">Per-page control, from the screens you already use</h3>
+            <p class="text-muted" style="max-width: 900px; margin: 0 auto;">
+                The <b>AI Search Optimization (GEO / llms.txt)</b> group on the page form
+                holds <b>Exclude from llms.txt</b> and
+                <b>Custom AI Description (Markdown)</b>. The same two fields appear in the
+                frontend <b>Page Properties</b> dialog, and
+                <b>Website &rsaquo; Site &rsaquo; Content &rsaquo; AI Search Pages</b> lists
+                every page with its URL, published and indexed state, exclusion flag and
+                AI description in one grid.
             </p>
         </div>
         <div class="oe_span12 text-center">
-            <img src="screenshot_output.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="Example /llms.txt output served by LLMs.txt Agent"/>
+            <img src="screenshot_page_control.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search Optimization group with Exclude from llms.txt and Custom AI Description (Markdown) on an Odoo 19 website page form"/>
+        </div>
+        <div class="oe_span12 text-center mt-4">
+            <img src="screenshot_pages_list.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search Pages (llms.txt) list screen added by the module under the Website app"/>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12 text-center">
+            <h3 class="oe_slogan">The real output, straight from a running instance</h3>
+            <p class="text-muted" style="max-width: 900px; margin: 0 auto;">
+                Not a redrawn example: this is the <code>/llms.txt</code> body that
+                <code>GPTBot</code> actually received from a scratch Odoo 19 database with
+                this module installed. The <code>127.0.0.1:18099</code> host is that
+                developer instance &mdash; on your server the same lines carry your own
+                domain.
+            </p>
+        </div>
+        <div class="oe_span12 text-center">
+            <img src="screenshot_output.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="Real /llms.txt response served by LLMs.txt Agent, captured from a running Odoo 19 instance"/>
         </div>
     </div>
 </section>
@@ -339,7 +375,9 @@
                 <tbody>
                     <tr>
                         <td class="fw-bold" style="width: 34%;">Odoo versions</td>
-                        <td>19.0 &mdash; Community and Enterprise</td>
+                        <td>19.0 &mdash; tested on Community. The module ships no
+                            Enterprise-only code and needs no Enterprise features, but
+                            Enterprise editions have not been separately verified.</td>
                     </tr>
                     <tr>
                         <td class="fw-bold">Dependencies</td>
