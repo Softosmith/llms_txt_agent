@@ -35,6 +35,27 @@ Running an online store or blog? Our companion standalone apps (**LLMs.txt Agent
    - Choose your **Generation & Cache Mode** (*Cached (Hourly Rebuild)*, *Cached (Daily Rebuild)*, or *Real-time / Dynamic*).
    - Click **Rebuild Cache Now** or use the **Preview /llms.txt** and **Preview /llms-full.txt** buttons to inspect your live output.
 
+### Important: anonymous access in a multi-database Odoo server
+
+AI crawlers visit `/llms.txt` without logging in, so Odoo must be able to select the correct database from the requested hostname before this module can run.
+
+- **One website database:** set that database in the Odoo server configuration:
+
+  ```ini
+  db_name = your_database_name
+  ```
+
+- **Multiple website databases:** give every database its own domain or subdomain and configure Odoo's `dbfilter`. For example, when database names match the first part of each hostname:
+
+  ```ini
+  dbfilter = ^%d$
+  list_db = False
+  ```
+
+  This can map `shop.example.com` to database `shop` and `academy.example.com` to database `academy`.
+
+Restart Odoo after changing its server configuration. This is a standard Odoo deployment setting, not a setting inside this module: Odoo must select a database before it can load any database-installed controller. Multiple databases sharing the exact same hostname therefore need domain, subdomain, port, or reverse-proxy routing configured by the server administrator.
+
 ---
 
 ## 👨‍💻 Developer & Credits

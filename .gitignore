@@ -18,6 +18,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Ignore store listing notes & raw working assets (keep private)
+# Ignore private testing notes, store listing notes & raw working assets
+/TESTING.md
 ASSETS.md
 assets_src/

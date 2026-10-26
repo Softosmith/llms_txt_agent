@@ -405,6 +405,22 @@
                         <td>Both supported &mdash; every setting is stored per website, and AI-facing text fields are translatable.</td>
                     </tr>
                     <tr>
+                        <td class="fw-bold">Anonymous access with multiple databases</td>
+                        <td>
+                            AI crawlers do not log in, so Odoo must select the correct
+                            database from the hostname before this app can serve a request.
+                            For one website database, configure
+                            <code>db_name = your_database_name</code>. For multiple website
+                            databases, give each database its own domain or subdomain and
+                            configure <code>dbfilter</code> (for example,
+                            <code>dbfilter = ^%d$</code> when each database name matches the
+                            first part of its hostname). This is a standard Odoo server
+                            setting and requires an Odoo restart. Multiple databases cannot
+                            independently serve the same <code>/llms.txt</code> URL on the
+                            exact same hostname without domain, port, or reverse-proxy routing.
+                        </td>
+                    </tr>
+                    <tr>
                         <td class="fw-bold">License</td>
                         <td>OPL-1</td>
                     </tr>
