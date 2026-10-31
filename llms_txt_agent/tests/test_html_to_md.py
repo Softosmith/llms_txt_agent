@@ -131,12 +131,13 @@ class TestHtmlToMarkdownS7Cases(TransactionCase):
         self.assertEqual(md('<table><tr><td>a | b</td><td>c</td></tr></table>'),
                          '|  |  |\n| --- | --- |\n| a \\| b | c |')
 
-    def test_23_table_colspan_is_expanded(self):
-        """QA-19 / D-V: ``colspan`` was ignored, producing a ragged table."""
+    def test_23_table_colspan_is_preserved_as_html(self):
+        """GFM cannot represent merged cells, so their structure stays lossless."""
         self.assertEqual(
             md('<table><tr><td colspan="2">wide</td></tr>'
                '<tr><td>c1</td><td>c2</td></tr></table>'),
-            '|  |  |\n| --- | --- |\n| wide | wide |\n| c1 | c2 |')
+            '<table><tr><td colspan="2">wide</td></tr>'
+            '<tr><td>c1</td><td>c2</td></tr></table>')
 
     def test_24_relative_link_becomes_absolute(self):
         self.assertEqual(md('<a href="/contactus">Contact</a>'),
@@ -212,11 +213,11 @@ class TestHtmlToMarkdownS7Cases(TransactionCase):
     def test_40_style_block_stripped(self):
         self.assertEqual(md('<style>.x{color:red}</style><p>kept</p>'), 'kept')
 
-    def test_41_header_footer_nav_form_stripped(self):
+    def test_41_visible_page_landmarks_survive_but_forms_are_stripped(self):
         self.assertEqual(
             md('<header>HDR</header><nav>NAV</nav><p>BODY</p>'
                '<form>FORM</form><footer>FTR</footer>'),
-            'BODY')
+            'HDR\n\nNAV\n\nBODY\n\nFTR')
 
     def test_42_unrendered_qweb_arch_contributes_no_text(self):
         """QA-23 / D-H: a dynamic arch has no copy; residue must not leak."""
@@ -314,11 +315,12 @@ class TestHtmlToMarkdownFixes(TransactionCase):
 
     # -- QA-19: tables ----------------------------------------------------
 
-    def test_qa19_rowspan_is_carried_down(self):
+    def test_qa19_rowspan_is_preserved_as_html(self):
         self.assertEqual(
             md('<table><tr><td rowspan="2">tall</td><td>b1</td></tr>'
                '<tr><td>b2</td></tr></table>'),
-            '|  |  |\n| --- | --- |\n| tall | b1 |\n| tall | b2 |')
+            '<table><tr><td rowspan="2">tall</td><td>b1</td></tr>'
+            '<tr><td>b2</td></tr></table>')
 
     def test_qa19_ragged_rows_are_padded(self):
         """A short row grows to the table's column count -- the emitter pads, and
@@ -333,13 +335,14 @@ class TestHtmlToMarkdownFixes(TransactionCase):
                '<tbody><tr><td>a | b</td><td>ok</td></tr></tbody></table>'),
             '| Cmd | Notes |\n| --- | --- |\n| a \\| b | ok |')
 
-    def test_qa19_colspan_and_rowspan_together_stay_square(self):
+    def test_qa19_colspan_and_rowspan_together_stay_lossless(self):
         self.assertEqual(
             md('<table><tr><th>A</th><th>B</th><th>C</th></tr>'
                '<tr><td colspan="2">wide</td><td rowspan="2">tall</td></tr>'
                '<tr><td>1</td><td>2</td></tr></table>'),
-            '| A | B | C |\n| --- | --- | --- |\n'
-            '| wide | wide | tall |\n| 1 | 2 | tall |')
+            '<table><tr><th>A</th><th>B</th><th>C</th></tr>'
+            '<tr><td colspan="2">wide</td><td rowspan="2">tall</td></tr>'
+            '<tr><td>1</td><td>2</td></tr></table>')
 
     def test_qa19_markup_inside_a_cell_is_kept_as_inline_markdown(self):
         self.assertEqual(
@@ -382,12 +385,12 @@ class TestHtmlToMarkdownFixes(TransactionCase):
 
     # -- QA-22: chrome, empty and duplicate headings ----------------------
 
-    def test_qa22_layout_wrap_containers_keep_their_copy(self):
+    def test_qa22_layout_wrap_containers_keep_visible_copy(self):
         self.assertEqual(
             md('<div id="wrapwrap"><div id="wrap"><p>Real copy</p></div>'
                '<div id="footer" class="oe_structure oe_structure_solo">'
                '<p>&copy; 2026 Our company</p></div></div>'),
-            'Real copy')
+            'Real copy\n\n© 2026 Our company')
 
     def test_qa22_editor_only_placeholder_blocks_are_dropped(self):
         self.assertEqual(
@@ -401,14 +404,20 @@ class TestHtmlToMarkdownFixes(TransactionCase):
             md('<p>copy</p><div class="css_editable_mode_hidden">Live text</div>'),
             'copy\n\nLive text')
 
-    def test_qa22_theme_chrome_classes_are_dropped(self):
+    def test_qa22_non_editable_public_content_is_visible(self):
         self.assertEqual(
             md('<p>copy</p><section class="o_not_editable">widget</section>'
                '<div class="o_footer_copyright">rights</div>'),
-            'copy')
+            'copy\n\nwidget\n\nrights')
 
     def test_qa22_empty_drop_zones_yield_nothing(self):
         self.assertEqual(md('<div class="oe_structure oe_empty"></div><p> </p>'), '')
+
+    def test_qa22_populated_oe_empty_wrapper_keeps_page_content(self):
+        self.assertEqual(
+            md('<div id="wrap" class="oe_structure oe_empty">'
+               '<h1>LLMS Test Heading</h1><p>Visible page content.</p></div>'),
+            '# LLMS Test Heading\n\nVisible page content.')
 
     def test_qa22_oe_structure_snippets_still_export_their_copy(self):
         """``oe_structure`` is a *container*: dropping it would delete content."""
@@ -430,9 +439,10 @@ class TestHtmlToMarkdownFixes(TransactionCase):
     def test_qa22_empty_heading_is_dropped(self):
         self.assertEqual(md('<h2>   </h2><p>body</p>'), 'body')
 
-    def test_qa22_no_copy_at_all_returns_empty_for_the_caller_fallback(self):
+    def test_qa22_visible_navigation_is_page_content(self):
         self.assertEqual(md('<header><nav><a href="/m">Menu</a></nav></header>'
-                            '<script>x()</script>'), '')
+                            '<script>x()</script>'),
+                         '[Menu](https://shop.example/m)')
 
     # -- QA-23: template residue ------------------------------------------
 
@@ -466,21 +476,39 @@ class TestHtmlToMarkdownFixes(TransactionCase):
         html = '<div>' * 500 + 'deep' + '</div>' * 500
         self.assertEqual(md(html), 'deep')
 
-    def test_pathologically_nested_chrome_does_not_raise(self):
-        """The depth guard covers *dropped* elements too.
-
-        ``<nav>`` is on the deny-list, and pushing every one of them unconditionally is
-        the single way a document could make the render recursion unbounded.  With the
-        guard, a page that is nothing but chrome reaches the documented empty result
-        instead of a RecursionError -- and ordinary chrome stripping still works.
-        """
-        self.assertEqual(md('<nav>' * 3000 + 'still readable' + '</nav>' * 3000), '')
-        self.assertEqual(md('<nav>Menu</nav><p>body</p>'), 'body')
+    def test_pathologically_nested_visible_navigation_does_not_raise(self):
+        """The depth guard bounds visible layout nesting without losing its copy."""
+        self.assertEqual(
+            md('<nav>' * 3000 + 'still readable' + '</nav>' * 3000),
+            'still readable')
+        self.assertEqual(md('<nav>Menu</nav><p>body</p>'), 'Menu\n\nbody')
 
     def test_strikethrough_becomes_tildes(self):
         self.assertEqual(
             md('<del>was</del> and <s>is</s> and <strike>gone</strike>'),
             '~~was~~ and ~~is~~ and ~~gone~~')
+
+    def test_complete_editor_fixture_keeps_each_structure_separate(self):
+        html = '''
+            <div id="wrap" class="oe_structure oe_empty">
+                <h1>LLMS Test Heading</h1>
+                <p>Text with <strong>bold</strong> and <em>italic</em>.</p>
+                <ul><li>IELTS Course 1</li><li>IELTS Course 2</li></ul>
+                <ul class="o_checklist"><li>Item 1</li><li class="o_checked">Item 2</li></ul>
+                <p><a href="https://google.com">Google.com</a></p>
+                <ol><li>eng 1</li><li>phy101</li></ol>
+                <img src="/image.svg" alt="Man working on Workstation">
+            </div>
+        '''
+        self.assertEqual(
+            md(html),
+            '# LLMS Test Heading\n\n'
+            'Text with **bold** and *italic*.\n\n'
+            '- IELTS Course 1\n- IELTS Course 2\n\n'
+            '- [ ] Item 1\n- [x] Item 2\n\n'
+            '[Google.com](https://google.com)\n\n'
+            '1. eng 1\n2. phy101\n\n'
+            '![Man working on Workstation](https://shop.example/image.svg)')
 
     def test_malformed_input_never_raises(self):
         for html in (
@@ -515,6 +543,67 @@ class TestHtmlToMarkdownFixes(TransactionCase):
 
     def test_title_attribute_is_not_exported_as_text(self):
         self.assertEqual(md('<abbr title="World Wide Web">WWW</abbr>'), 'WWW')
+
+    def test_odoo_checklist_preserves_checked_state(self):
+        self.assertEqual(
+            md('<ul class="o_checklist"><li>Todo</li>'
+               '<li class="o_checked">Done</li></ul>'),
+            '- [ ] Todo\n- [x] Done')
+
+    def test_nested_odoo_checklist_stays_nested(self):
+        self.assertEqual(
+            md('<ul><li>Parent<ul class="o_checklist"><li>Todo</li>'
+               '<li class="o_checked">Done</li></ul></li></ul>'),
+            '- Parent\n  - [ ] Todo\n  - [x] Done')
+
+    def test_hidden_attributes_classes_and_styles_are_removed(self):
+        html = (
+            '<p>visible</p><p hidden>hidden attr</p>'
+            '<p aria-hidden="true">aria</p><p class="d-none">class</p>'
+            '<p style="color:red; display: none !important;">style</p>'
+            '<p style="visibility:hidden">also style</p>')
+        self.assertEqual(md(html), 'visible')
+
+    def test_social_share_icons_get_accessible_labels(self):
+        html = (
+            '<div class="s_share">'
+            '<h4 class="s_share_title d-none">Share</h4>'
+            '<a class="s_share_facebook" href="https://facebook.example/?u={url}" '
+            'aria-label="Facebook"><i class="fa fa-facebook"></i></a>'
+            '<a class="s_share_twitter" href="https://x.example/?url={url}" '
+            'aria-label="X"><i class="fa fa-twitter"></i></a>'
+            '<a class="s_share_email" href="mailto:?body={url}" aria-label="Email">'
+            '<i class="fa fa-envelope"></i></a></div>')
+        self.assertEqual(
+            md(html),
+            '[Facebook](https://facebook.example/?u={url}) '
+            '[X](https://x.example/?url={url}) '
+            '[Email](mailto:?body={url})')
+
+    def test_lazy_image_source_is_used(self):
+        self.assertEqual(
+            md('<img src="data:image/gif;base64,placeholder" data-src="/real image.png" '
+               'alt="Real [image]">'),
+            '![Real \\[image\\]](https://shop.example/real%20image.png)')
+
+    def test_unsafe_link_keeps_its_label_without_the_target(self):
+        self.assertEqual(md('<a href="javascript:alert(1)">Safe label</a>'), 'Safe label')
+
+    def test_link_label_and_destination_are_markdown_safe(self):
+        self.assertEqual(
+            md('<a href="/docs/part (one)">A [link]</a>'),
+            '[A \\[link\\]](https://shop.example/docs/part%20\\(one\\))')
+
+    def test_pretty_printed_inline_html_collapses_source_newlines(self):
+        self.assertEqual(
+            md('<p>Great stories have a <strong>personality</strong>.\n'
+               '    Consider telling a story.</p>'),
+            'Great stories have a **personality**. Consider telling a story.')
+
+    def test_block_content_makes_a_table_use_sanitized_html(self):
+        self.assertEqual(
+            md('<table onclick="bad()"><tr><td><p>one</p><p>two</p></td></tr></table>'),
+            '<table><tr><td><p>one</p><p>two</p></td></tr></table>')
 
     def test_definition_terms_render_as_prose(self):
         self.assertEqual(

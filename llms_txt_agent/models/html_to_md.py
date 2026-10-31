@@ -34,16 +34,16 @@ Three phases, so every concern has exactly one owner:
    and the empty-result rule are sequence-level decisions, so they live in one place
    that sees the blocks in order.
 
-``_CHROME_CLASSES`` is a documented deny-list, not a guess, and every entry has a
-test.  Note what is deliberately *not* on it: ``oe_structure`` (the editable drop
-zone whose children are the page's real copy) and ``css_editable_mode_hidden``
-(hidden while *editing*, visible to visitors -- i.e. content).  Treating either as
-chrome would delete copy, which is a worse defect than the one being fixed.
+Visibility uses explicit visitor-hidden markers rather than treating editor locking
+or layout wrappers as chrome.  In particular, ``oe_structure``, ``oe_empty``,
+``o_not_editable`` and ``css_editable_mode_hidden`` can all contain public copy;
+removing any of them wholesale would delete visible page content.
 """
 
 import re
-from html import unescape
+from html import escape, unescape
 from html.parser import HTMLParser
+from urllib.parse import quote, urlsplit, urlunsplit
 
 # -- vocabulary -----------------------------------------------------------
 
@@ -52,7 +52,7 @@ from html.parser import HTMLParser
 _DROP_TAGS = frozenset({
     'script', 'style', 'noscript', 'template', 'head', 'meta', 'link',
     'svg', 'math', 'iframe', 'button', 'input', 'select', 'textarea', 'option',
-    'header', 'footer', 'nav', 'form',
+    'form',
 })
 
 #: Never have children, never need a closing tag.
@@ -91,35 +91,47 @@ _HEADING_TAGS = frozenset({'h1', 'h2', 'h3', 'h4', 'h5', 'h6'})
 _LIST_TAGS = frozenset({'ul', 'ol'})
 _CELL_TAGS = frozenset({'td', 'th'})
 _TABLE_SECTIONS = ('thead', 'tbody', 'tfoot')
+_SAFE_HTML_TAGS = frozenset({
+    'table', 'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'th',
+    'td', 'p', 'br', 'strong', 'b', 'em', 'i', 'code', 'del', 's', 'a', 'img',
+    'ul', 'ol', 'li',
+})
+_SAFE_TABLE_ATTRS = frozenset({'rowspan', 'colspan', 'scope', 'align', 'valign'})
 
 #: Nesting depth beyond which elements stop adding structure.  A real page comes
 #: nowhere near this; the guard bounds the render recursion for pathological markup
 #: while keeping the copy (see the 500-nested-div test).
 _MAX_DEPTH = 40
 
-#: Odoo layout chrome, by class name (QA-22).  ``oe_empty`` is an empty drop zone;
-#: ``oe_structure_solo`` is the one-row footer wrapper; ``o_footer_copyright`` and
-#: ``o_not_editable`` are theme chrome; ``css_non_editable_mode_hidden`` is forced
-#: visible *only* while editing (odoo19/addons/website/static/src/scss/
-#: website.edit_mode.scss:160), so it is editor scaffolding rather than copy.
-_CHROME_CLASSES = frozenset({
+#: Classes that unambiguously hide content from website visitors.  Editor locking
+#: (``o_not_editable``), footer wrappers and ``oe_empty`` do not imply invisibility.
+_HIDDEN_CLASSES = frozenset({
     'css_non_editable_mode_hidden',
-    'o_footer_copyright',
-    'o_not_editable',
-    'oe_empty',
-    'oe_structure_solo',
+    'd-none',
 })
+_HIDDEN_STYLE = re.compile(
+    r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important\s*)?(?:;|$)',
+    re.IGNORECASE,
+)
 
 #: Core's own marker for markup the editor neither saves nor shows to visitors.
 _IGNORE_ATTR = 't-ignore'
 
 #: Unrendered template residue that must not be served to a model (QA-23, D-C/D-H).
 _INTERPOLATION = re.compile(r'#\{[^{}]*\}|!\{[^{}]*\}|\{\{[^{}]*\}\}?')
-#: Whitespace that carries no meaning.  ``\n`` is *not* in here: a newline inside a
-#: blockquote or a list item is a line break the released parser already got right
-#: and FINDINGS S7 counts as passing, so it survives.
-_SPACES = re.compile(r'[ \t\r\f\v\x00\u00a0]+')
+#: HTML source whitespace collapses in normal flow.  Explicit ``<br>`` nodes and
+#: ``<pre>`` contents carry line breaks separately and therefore remain meaningful.
+_SPACES = re.compile(r'[\s\x00\u00a0]+')
 _LINE_BREAK = '\n'
+_SAFE_SCHEMES = frozenset({'', 'http', 'https', 'mailto', 'tel'})
+_SHARE_LABELS = (
+    ('s_share_facebook', 'Facebook'),
+    ('s_share_twitter', 'X'),
+    ('s_share_linkedin', 'LinkedIn'),
+    ('s_share_whatsapp', 'WhatsApp'),
+    ('s_share_pinterest', 'Pinterest'),
+    ('s_share_email', 'Email'),
+)
 
 
 # -- phase 1: the tree ----------------------------------------------------
@@ -262,12 +274,18 @@ class _TreeBuilder(HTMLParser):
 # -- chrome and classification --------------------------------------------
 
 def _is_chrome(node):
-    """Is this element Odoo layout scaffolding rather than page copy?"""
+    """Is this element hidden from website visitors or editor-only scaffolding?"""
     if _IGNORE_ATTR in node.attrs:
         value = (node.attr(_IGNORE_ATTR) or 'true').strip().lower()
         if value not in ('false', '0'):
             return True
-    return bool(set(node.classes()) & _CHROME_CLASSES)
+    if 'hidden' in node.attrs:
+        return True
+    if node.attr('aria-hidden').strip().lower() == 'true':
+        return True
+    if set(node.classes()) & _HIDDEN_CLASSES:
+        return True
+    return bool(_HIDDEN_STYLE.search(node.attr('style')))
 
 
 def _skipped(node):
@@ -282,21 +300,45 @@ def _is_inline(node):
 
 # -- phase 2a: inline ------------------------------------------------------
 
-def _text_data(raw):
-    """Whitespace and residue policy for one text node."""
-    value = raw.replace('\r', _LINE_BREAK)
-    value = _INTERPOLATION.sub('', value)
-    value = _SPACES.sub(' ', value)
-    value = value.replace(' %s' % _LINE_BREAK, _LINE_BREAK)
-    value = value.replace('%s ' % _LINE_BREAK, _LINE_BREAK)
-    return value
+def _text_data(raw, preserve_newlines=False):
+    """Apply browser-like whitespace and remove unrendered template residue."""
+    value = _INTERPOLATION.sub('', raw.replace('\r', _LINE_BREAK))
+    if not preserve_newlines:
+        return _SPACES.sub(' ', value)
+    return _LINE_BREAK.join(_SPACES.sub(' ', line).strip()
+                            for line in value.split(_LINE_BREAK))
 
 
 def _url(reference, base_url):
-    reference = (reference or '').strip()
-    if reference and base_url and reference.startswith('/'):
-        return '%s%s' % (base_url.rstrip('/'), reference)
-    return reference
+    """Resolve and encode a safe Markdown URL, or return ``''`` when unsafe."""
+    reference = ''.join((reference or '').splitlines()).strip()
+    if not reference:
+        return ''
+    try:
+        parsed = urlsplit(reference)
+    except ValueError:
+        return ''
+    if parsed.scheme.lower() not in _SAFE_SCHEMES:
+        return ''
+    if not parsed.scheme and base_url and reference.startswith('/'):
+        reference = '%s%s' % (base_url.rstrip('/'), reference)
+        try:
+            parsed = urlsplit(reference)
+        except ValueError:
+            return ''
+    path = quote(parsed.path, safe='/%:@!$&\'()*+,;=-._~')
+    query = quote(parsed.query, safe='=&%/:;+,-._~{}')
+    fragment = quote(parsed.fragment, safe='=&%/:;+,-._~')
+    return urlunsplit((parsed.scheme, parsed.netloc, path, query, fragment))
+
+
+def _markdown_label(value):
+    value = ' '.join((value or '').split()).replace('\\', '\\\\')
+    return value.replace('[', '\\[').replace(']', '\\]')
+
+
+def _markdown_destination(value):
+    return (value or '').replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
 
 
 def _filename(reference):
@@ -304,18 +346,47 @@ def _filename(reference):
     return tail.rsplit('/', 1)[-1] or 'image'
 
 
+def _image_source(node):
+    for name in ('src', 'data-src', 'data-original', 'data-original-src', 'data-lazy-src'):
+        source = node.attr(name).strip()
+        if source and not source.lower().startswith('data:'):
+            return source
+    srcset = node.attr('srcset') or node.attr('data-srcset')
+    if srcset:
+        return srcset.split(',', 1)[0].strip().split()[0]
+    return ''
+
+
 def _image(node, base_url):
-    """QA-15 / D-T: there was no ``<img>`` rule at all, so images vanished."""
-    src = _url(node.attr('src'), base_url)
+    """Render normal and lazy-loaded images with a useful, escaped label."""
+    src = _url(_image_source(node), base_url)
     if not src:
-        return ''  # no source, no information
-    alt = ' '.join((node.attr('alt') or '').split()) or _filename(src)
-    return '![%s](%s)' % (alt.replace('[', '(').replace(']', ')'), src)
+        return ''
+    alt = _markdown_label(node.attr('alt')) or _markdown_label(_filename(src))
+    return '![%s](%s)' % (alt, _markdown_destination(src))
 
 
-def _inline(node, base_url):
+def _link_label(node, inner):
+    label = inner.strip()
+    if label:
+        return label
+    for name in ('aria-label', 'title'):
+        label = _markdown_label(node.attr(name))
+        if label:
+            return label
+    classes = set(node.classes())
+    for class_name, class_label in _SHARE_LABELS:
+        if class_name in classes:
+            return class_label
+    return ''
+
+
+def _inline(node, base_url, preserve_newlines=False, in_link=False):
     if node.tag == '#text':
-        return _text_data(node.attr('text'))
+        text = _text_data(node.attr('text'), preserve_newlines=preserve_newlines)
+        if in_link:
+            text = text.replace('\\', '\\\\').replace('[', '\\[').replace(']', '\\]')
+        return text
     if node.tag == '#comment_space':
         return ' '
     if node.tag == '#break':
@@ -323,16 +394,23 @@ def _inline(node, base_url):
     if node.tag == '#rule' or _skipped(node):
         return ''
 
-    inner = ''.join(_inline(child, base_url) for child in node.children)
+    inner = ''.join(_inline(
+        child, base_url, preserve_newlines=preserve_newlines,
+        in_link=in_link or node.tag == 'a',
+    ) for child in node.children)
     if node.tag == 'img':
         return _image(node, base_url)
-    if not inner:
-        return ''
     if node.tag == 'a':
+        label = _link_label(node, inner)
         href = _url(node.attr('href'), base_url)
         if not href:
-            return inner  # an anchor with no target is just its label
-        return '[%s](%s)' % (inner, href)
+            return label  # an unsafe or targetless anchor is just its label
+        if not label:
+            return ''
+        link = '[%s](%s)' % (label, _markdown_destination(href))
+        return link + (' ' if not inner.strip() else '')
+    if not inner:
+        return ''
     if node.tag in _STRONG_TAGS:
         return '**%s**' % inner
     if node.tag in _EMPHASIS_TAGS:
@@ -350,7 +428,7 @@ class _Block:
     """One renderable block.  ``kind`` decides which of the fields matter."""
 
     __slots__ = ('kind', 'text', 'level', 'lines', 'items', 'nested',
-                 'ordered', 'start', 'header', 'rows')
+                 'ordered', 'checklist', 'checked', 'start', 'header', 'rows')
 
     def __init__(self, kind, **values):
         self.kind = kind
@@ -360,6 +438,8 @@ class _Block:
         self.items = values.get('items', [])
         self.nested = values.get('nested', [])
         self.ordered = values.get('ordered', False)
+        self.checklist = values.get('checklist', False)
+        self.checked = values.get('checked', False)
         self.start = values.get('start', 1)
         self.header = values.get('header', [])
         self.rows = values.get('rows', [])
@@ -419,6 +499,9 @@ def _render_block(node, base_url):
     if tag in _CONTAINER_TAGS or tag in ('#root',):
         return _render_blocks(node, base_url)
     # An unrecognised block: keep its copy, lose its markup.
+    if all(_is_inline(child) or _skipped(child) for child in node.children):
+        text = ''.join(_inline(child, base_url) for child in node.children).strip()
+        return [_Block('paragraph', text=text)] if text else []
     inner = _render_blocks(node, base_url)
     if inner:
         return inner
@@ -444,25 +527,28 @@ def _render_pre(node):
 
 
 def _render_quote(node, base_url):
+    if all(_is_inline(child) or _skipped(child) for child in node.children):
+        text = ''.join(_inline(child, base_url, preserve_newlines=True)
+                       for child in node.children).strip()
+        return _Block('quote', lines=[text] if text else [])
     chunks = []
     for block in _render_blocks(node, base_url):
         rendered = _serialize(block, base_url)
         if rendered.strip():
             chunks.append(rendered)
-    if not chunks:
-        text = ''.join(_inline(child, base_url) for child in node.children).strip()
-        if text:
-            chunks.append(text)
     return _Block('quote', lines=chunks)
 
 
 def _render_list(node, base_url):
     items = []
+    checklist = node.tag == 'ul' and 'o_checklist' in node.classes()
     for child in node.children:
         if _skipped(child):
             continue
         if child.tag == 'li':
-            items.append(_render_item(child, base_url))
+            item = _render_item(child, base_url)
+            item.checked = checklist and 'o_checked' in child.classes()
+            items.append(item)
         elif child.tag in _LIST_TAGS:
             # A list directly inside a list (invalid, but editors emit it).
             items.append(_render_list(child, base_url))
@@ -474,7 +560,8 @@ def _render_list(node, base_url):
         start = max(1, int((node.attr('start') or '1').strip()))
     except (TypeError, ValueError):
         start = 1
-    return _Block('list', ordered=node.tag == 'ol', start=start, items=items)
+    return _Block(
+        'list', ordered=node.tag == 'ol', checklist=checklist, start=start, items=items)
 
 
 def _render_item(node, base_url):
@@ -497,6 +584,8 @@ def _render_item(node, base_url):
         else:
             nested.extend(_render_blocks(child, base_url))
     text = ''.join(_inline(child, base_url) for child in run).strip()
+    if not text and nested and nested[0].kind == 'paragraph':
+        text = nested.pop(0).text
     return _Block('item', text=text, nested=nested)
 
 
@@ -538,9 +627,71 @@ def _cell_text(cell, base_url):
     return ' '.join(text.split()).replace('|', '\\|')
 
 
+def _walk(node):
+    yield node
+    for child in node.children:
+        yield from _walk(child)
+
+
+def _complex_table(node):
+    for descendant in _walk(node):
+        if descendant is not node and descendant.tag == 'table':
+            return True
+        if descendant.tag in _CELL_TAGS:
+            if _int_attr(descendant, 'rowspan') > 1 or _int_attr(descendant, 'colspan') > 1:
+                return True
+            if any(child.tag in _BLOCK_TAGS and child.tag not in ('br',)
+                   for child in descendant.children):
+                return True
+    return False
+
+
+def _safe_html_attrs(node, base_url):
+    attrs = []
+    if node.tag in ('td', 'th'):
+        for name in _SAFE_TABLE_ATTRS:
+            value = node.attr(name).strip()
+            if value:
+                attrs.append((name, value))
+    elif node.tag == 'ol' and node.attr('start').strip():
+        attrs.append(('start', str(_int_attr(node, 'start'))))
+    elif node.tag == 'a':
+        href = _url(node.attr('href'), base_url)
+        if href:
+            attrs.append(('href', href))
+    elif node.tag == 'img':
+        src = _url(_image_source(node), base_url)
+        if src:
+            attrs.append(('src', src))
+        alt = ' '.join(node.attr('alt').split()) or (_filename(src) if src else '')
+        if alt:
+            attrs.append(('alt', alt))
+    return ''.join(' %s="%s"' % (name, escape(value, quote=True))
+                   for name, value in attrs)
+
+
+def _safe_html(node, base_url):
+    if _skipped(node):
+        return ''
+    if node.tag == '#text':
+        return escape(_INTERPOLATION.sub('', node.attr('text')))
+    if node.tag == '#comment_space':
+        return ' '
+    if node.tag == '#break':
+        return '<br>'
+    if node.tag not in _SAFE_HTML_TAGS:
+        return ''.join(_safe_html(child, base_url) for child in node.children)
+    attrs = _safe_html_attrs(node, base_url)
+    if node.tag in ('br', 'col', 'img'):
+        return '<%s%s>' % (node.tag, attrs)
+    inner = ''.join(_safe_html(child, base_url) for child in node.children)
+    return '<%s%s>%s</%s>' % (node.tag, attrs, inner, node.tag)
+
+
 def _render_table(node, base_url):
-    """Expand ``colspan`` into repeated cells and ``rowspan`` into carried-down
-    cells, then pad every row to the widest one, so the table is never ragged."""
+    """Use GFM for simple tables and sanitized HTML for structures GFM loses."""
+    if _complex_table(node):
+        return _Block('raw_html', text=_safe_html(node, base_url))
     rows = _table_rows(node)
     grid = []
     width = 0
@@ -593,20 +744,24 @@ def _serialize_list(block, indent, base_url):
         if item.kind == 'list':
             out.append(_serialize_list(item, indent, base_url))
             continue
-        marker = '%d. ' % number if block.ordered else '- '
+        if block.ordered:
+            marker = '%d. ' % number
+        elif block.checklist:
+            marker = '- [%s] ' % ('x' if item.checked else ' ')
+        else:
+            marker = '- '
         number += 1
-        text = item.text.replace(_LINE_BREAK, _LINE_BREAK + pad)
+        continuation = pad + (' ' * len(marker))
+        text = item.text.replace(_LINE_BREAK, _LINE_BREAK + continuation)
         out.append('%s%s%s' % (pad, marker, text))
         for nested in item.nested:
             if nested.kind == 'list':
                 out.append(_serialize_list(nested, indent + 2, base_url))
-            elif nested.kind == 'paragraph':
-                out.append('%s  %s' % (pad, nested.text.replace(
-                    _LINE_BREAK, _LINE_BREAK + pad + '  ')))
             else:
                 rendered = _serialize(nested, base_url)
-                out.append('%s%s' % (pad, rendered.replace(
-                    _LINE_BREAK, _LINE_BREAK + pad)))
+                if rendered:
+                    out.append('%s%s' % (continuation, rendered.replace(
+                        _LINE_BREAK, _LINE_BREAK + continuation)))
     return '\n'.join(out)
 
 
@@ -632,6 +787,8 @@ def _serialize(block, base_url=''):
                  '| ' + ' | '.join(['---'] * len(header)) + ' |']
         lines.extend('| ' + ' | '.join(row) + ' |' for row in block.rows)
         return '\n'.join(lines)
+    if block.kind == 'raw_html':
+        return block.text
     return ''
 
 
