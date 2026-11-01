@@ -5,7 +5,15 @@
         <field name="model">res.config.settings</field>
         <field name="inherit_id" ref="website.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//block[@id='website_settings']" position="inside">
+            <!-- Odoo 17 gives two blocks the same id (Privacy at
+                 website/res_config_settings_views.xml:79, SEO at :96), so
+                 //block[@id='website_settings'] would land in whichever one the
+                 XPath happens to resolve first.  Anchoring on a setting id is
+                 both unique and legal: @title could not be used here, because
+                 view inheritance may not select on a translated attribute
+                 (odoo17/odoo/addons/base/models/ir_ui_view.py:338-347 with
+                 TRANSLATED_ATTRS from odoo17/odoo/tools/translate.py:162-164). -->
+            <xpath expr="//block[.//setting[@id='google_analytics_setting']]" position="inside">
                 <setting id="website_llms_txt_setting" string="AI Search SEO (llms.txt &amp; Markdown)"
                          help="Generates structured machine-readable llms.txt and markdown content exports for AI search engines (ChatGPT, Claude, Perplexity, Gemini).">
                     <field name="llm_enabled"/>

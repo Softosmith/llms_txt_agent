@@ -110,7 +110,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         a setting (``website.homepage_url``) -- not the constant ``/``.
 
         Odoo ships the rule in ``website.page._compute_is_homepage``
-        (``odoo19/addons/website/models/website_page.py:58-61``): a page is the
+        (``odoo17/addons/website/models/website_page.py:48-51``): a page is the
         homepage when its url equals ``website.homepage_url or '/'``.  The alias has
         to follow that expression or a site that moved its homepage to ``/welcome``
         gets a 404 on the one URL its own index points a crawler to.
@@ -273,8 +273,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
             self.page.with_context(lang='fr_FR').llm_custom_description,
             'Résumé français de la page.', 'precondition: the fr_FR key must hold French')
 
-        fr = self.url_open(f'/llms/page/{self.page.id}.md',
-                           cookies={'frontend_lang': 'fr_FR'})
+        fr = self._open_as_lang(f'/llms/page/{self.page.id}.md', 'fr_FR')
         self.assertEqual(fr.status_code, 200)
         self.assertIn('Résumé français de la page.', fr.text,
                       'a French crawler must receive the French summary')
@@ -282,8 +281,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
                          'the English summary must not leak into the French document')
 
         self._new_crawler_session()
-        en = self.url_open(f'/llms/page/{self.page.id}.md',
-                           cookies={'frontend_lang': 'en_US'})
+        en = self._open_as_lang(f'/llms/page/{self.page.id}.md', 'en_US')
         self.assertIn('English summary of the page.', en.text)
         self.assertNotIn('Résumé français de la page.', en.text)
 
@@ -307,14 +305,42 @@ class TestLlmsTxtAgentHttp(HttpCase):
     def _new_crawler_session(self):
         """Forget the test client's cookies before the next request.
 
-        Odoo pins a session's language through the ``frontend_lang`` cookie, and
-        a cookie the server already put in the jar beats the one handed to
-        ``url_open()`` -- the test framework says so itself
-        (``odoo/tests/common.py:2407-2412``).  Dropping the jar is what makes a
-        second, differently-language request in the same test behave like the
-        fresh crawler it is meant to model.
+        Odoo pins a session's language through the ``frontend_lang`` cookie, and a
+        cookie the server already put in the jar beats the one set for a single
+        request (``odoo17/odoo/tests/common.py:1966``).  Dropping the jar is what
+        makes a second, differently-language request in the same test behave like
+        the fresh crawler it is meant to model.
+
+        On Odoo 17 the test cursor is *itself* selected by a cookie:
+        ``test_request_key`` is read server-side at
+        ``odoo17/odoo/tests/common.py:765`` and put in the jar once per test
+        (``:1966``), never re-applied by ``url_open()``.  So the clear has to put
+        that one back -- without it the next request runs against the real cursor,
+        where this test's website and pages do not exist, and the endpoints 404
+        for a reason that has nothing to do with the module.
         """
-        self.opener.cookies.clear()
+        jar = self.opener.cookies
+        test_key = jar.get('test_request_key')
+        jar.clear()
+        if test_key:
+            jar['test_request_key'] = test_key
+
+    def _open_as_lang(self, path, lang_code):
+        """GET *path* as a crawler whose ``frontend_lang`` cookie is *lang_code*.
+
+        Odoo 17's ``url_open()`` takes no ``cookies=`` keyword -- the
+        requests-based opener only grew one in 18.0 -- so the language goes on the
+        session jar, which is what 18+ merges into the request anyway.  Any
+        ``frontend_lang`` the server put there first is removed: two same-name
+        cookies in one header make the language depend on ordering, which is not
+        what these tests are measuring.
+        """
+        jar = self.opener.cookies
+        for cookie in list(jar):
+            if cookie.name == 'frontend_lang':
+                jar.clear(cookie.domain, cookie.path, cookie.name)
+        jar.set('frontend_lang', lang_code, path='/')
+        return self.url_open(path)
 
     # ------------------------------------------------------- cache modes
 
@@ -488,7 +514,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         staff pages, partner price lists -- was exported in full
         (``qa_evidence/out/s10_restricted_llms.md``)."""
         self.view.visibility = 'restricted_group'
-        self.view.group_ids = [(4, self.env.ref('base.group_system').id)]
+        self.view.groups_id = [(4, self.env.ref('base.group_system').id)]
         full = self.website._generate_llms_full_txt()
         txt = self.website._generate_llms_txt()
         self.assertNotIn('Body copy for the http test page.', full,
@@ -498,7 +524,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
 
     def test_restricted_group_page_item_route_404s(self):
         self.view.visibility = 'restricted_group'
-        self.view.group_ids = [(4, self.env.ref('base.group_system').id)]
+        self.view.groups_id = [(4, self.env.ref('base.group_system').id)]
         r = self.url_open(f'/llms/page/{self.page.id}.md')
         self.assertEqual(r.status_code, 404,
                          'a group-restricted page must not be served by id')
@@ -591,12 +617,12 @@ class TestLlmsTxtAgentHttp(HttpCase):
         self._activate_french()
         self.website.with_context(lang='fr_FR').llm_site_title = 'Titre du site en français'
 
-        en = self.url_open('/llms.txt', cookies={'frontend_lang': 'en_US'})
+        en = self._open_as_lang('/llms.txt', 'en_US')
         self.assertEqual(en.status_code, 200)
         self.assertIn('# HTTP Test Company', en.text)
 
         self._new_crawler_session()
-        fr = self.url_open('/llms.txt', cookies={'frontend_lang': 'fr_FR'})
+        fr = self._open_as_lang('/llms.txt', 'fr_FR')
         self.assertEqual(fr.status_code, 200)
         self.assertIn('Titre du site en français', fr.text,
                       'a French crawler must get the French title')
@@ -622,7 +648,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
     def test_full_export_is_served_in_request_language(self):
         self._activate_french()
         self.website.with_context(lang='fr_FR').llm_site_summary = 'Résumé français.'
-        fr = self.url_open('/llms-full.txt', cookies={'frontend_lang': 'fr_FR'})
+        fr = self._open_as_lang('/llms-full.txt', 'fr_FR')
         self.assertEqual(fr.status_code, 200)
         self.assertIn('Résumé français.', fr.text)
         self.assertNotIn('Summary line for HTTP tests.', fr.text)
@@ -652,10 +678,9 @@ class TestLlmsTxtAgentHttp(HttpCase):
 
     def test_content_language_header_tracks_the_request(self):
         self._activate_french()
-        r = self.url_open('/llms.md', cookies={'frontend_lang': 'fr_FR'})
+        r = self._open_as_lang('/llms.md', 'fr_FR')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Language'), 'fr_FR')
         self._new_crawler_session()
-        item = self.url_open(f'/llms/page/{self.page.id}.md',
-                             cookies={'frontend_lang': 'fr_FR'})
+        item = self._open_as_lang(f'/llms/page/{self.page.id}.md', 'fr_FR')
         self.assertEqual(item.headers.get('Content-Language'), 'fr_FR')

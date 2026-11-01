@@ -208,13 +208,13 @@ class TestPackaging(TransactionCase):
     def test_the_manifest_rst_description_parses_cleanly(self):
         """The manifest ``description`` is reStructuredText, and Odoo does render it.
 
-        ``ir_module_module._compute_description_html``
-        (``odoo19/odoo/addons/base/models/ir_module.py:188-209``) takes the
+        ``IrModuleModule._get_desc()``
+        (``odoo17/odoo/addons/base/models/ir_module.py:177-226``) takes the
         ``static/description/index.html`` when present and otherwise pipes this
-        string through docutils with these same overrides -- which is the path the
-        two companions ran on before W8 added their listings, and the path they
-        fall back to the moment one is dropped.  A parse error there is a visible
-        product defect, so keep the prose clean rather than unpinned.
+        string through docutils with these same overrides (``:212-226``) -- which
+        is the path the two companions ran on before W8 added their listings, and
+        the path they fall back to the moment one is dropped.  A parse error there
+        is a visible product defect, so keep the prose clean rather than unpinned.
         """
         import io
 

@@ -103,7 +103,7 @@ class WebsiteLlmController(http.Controller):
         lang = website._llms_lang_code()
         # ``/home.md`` names the homepage, and Odoo's homepage URL is a setting, not
         # the constant ``/``: core resolves it the same way, as
-        # ``website.homepage_url or '/'`` (``odoo19/addons/website/models/website_page.py:61``).
+        # ``website.homepage_url or '/'`` (``odoo17/addons/website/models/website_page.py:48-51``).
         # Hardcoding ``/`` meant that on a site whose homepage is ``/welcome`` the
         # alias looked for a page at ``/`` -- and 404'd, or served some other
         # record that happened to own that URL.

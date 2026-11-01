@@ -7,5 +7,6 @@ from . import llms_http
 from . import res_website
 from . import res_config_settings
 from . import website_page
-from . import website_page_properties
+# No website_page_properties on this branch: Odoo 17 has no website.page.properties
+# transient, its Page Properties dialog form is a website.page view.
 from . import ir_ui_view

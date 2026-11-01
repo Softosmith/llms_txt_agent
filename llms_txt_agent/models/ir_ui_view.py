@@ -11,12 +11,12 @@ from odoo import models
 ARCH_FIELDS = frozenset({'arch', 'arch_base', 'arch_db'})
 
 # The same delegation hides the page's *access rules* here: ``visibility`` and
-# ``group_ids`` are delegated fields, so locking a page writes ``ir.ui.view`` and
+# ``groups_id`` are delegated fields, so locking a page writes ``ir.ui.view`` and
 # never reaches the ``website.page`` invalidation hook.
 # Without them a password set on an already-cached page left its body readable
 # in /llms-full.txt (QA-06, FINDINGS D-E1 -- the gating is only worth as much as
 # the cache that remembers it).
-ACCESS_FIELDS = frozenset({'visibility', 'group_ids'})
+ACCESS_FIELDS = frozenset({'visibility', 'groups_id'})
 
 # The SEO description entered before publishing is reused as the page summary in
 # /llms.txt, so changing it must invalidate the generated index.

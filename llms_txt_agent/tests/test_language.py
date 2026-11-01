@@ -11,19 +11,26 @@ from odoo.tests.common import TransactionCase, tagged
 class TestLlmsTxtAgentLanguage(TransactionCase):
     """The per-language cache keys behind QA-11 (FINDINGS D-A).
 
-    ``llm_txt_cache`` and ``llm_full_txt_cache`` are ``translate=True``, which
-    in Odoo 19 means one jsonb column holding ``{language_code: document}``.  Two
-    properties of that layout are what broke the feature:
+    ``llm_txt_cache`` and ``llm_full_txt_cache`` are ``translate=True``, which on
+    this branch means one jsonb column holding ``{language_code: document}``.
+    Three properties of that layout are what broke the feature:
 
     * reading or writing the field touches **one** key -- the one named by the
       context language -- so a generation pass that always ran in en_US could
       never fill the French key;
-    * ``write({'llm_txt_cache': False})`` clears **only the current key**.  The
-      shipped invalidation did exactly that, so every other language kept
-      serving its stale document forever, invisibly, with a
-      "Cache Last Rebuilt" stamp that looked fresh.
+    * a truthy write is a jsonb *merge*, and when the value being merged carries
+      no en_US key the ORM invents one from the value it is writing
+      (``odoo17/odoo/models.py:4551-4560``).  The first document ever cached in a
+      foreign language therefore also lands under en_US, and the next English
+      crawler is served French.  ``_llms_cache_store()`` is why the sweep on this
+      branch states every key it writes instead of leaving one to the fallback;
+    * clearing is not the mirror image of writing -- a falsy value takes the
+      early return in ``Field.write`` (``odoo17/odoo/fields.py:1816-1819``) and
+      NULLs the whole column, so the per-language invalidation sweep is
+      redundant here and load-bearing on a series that updates the column key by
+      key.  It is kept in the loop form for that reason.
 
-    These tests pin both behaviours down.  The database this suite runs on is
+    These tests pin the behaviours down.  The database this suite runs on is
     installed with en_US active and every other ``res.lang`` row archived, which
     is why the tests activate fr_FR themselves instead of assuming it.
     """
@@ -85,12 +92,14 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
           auto-flush), so the transaction has to be flushed explicitly before
           the column is read -- otherwise a language warmed moments ago is
           invisible and the precondition fails for the wrong reason;
-        * writing ``False`` to a translated field does **not** delete the key, it
-          stores JSON ``null`` under it (``col || {"en_US": null}`` in
-          ``odoo/orm/models.py:4564-4578``).  A null-valued key is "no document"
-          -- ``->>'lang'`` and ``COALESCE`` both treat it as missing -- so only
-          non-null keys count.  That same fact is why the read path has to ask
-          for one exact key instead of testing the column as a whole.
+        * a *cleared* language is a missing or empty one: on this branch writing
+          ``False`` to a translated field takes the early return in
+          ``Field.write`` (``odoo17/odoo/fields.py:1816-1819``) and NULLs the
+          whole column, so the raw read has to tolerate both ``NULL`` and ``{}``;
+          and a key holding ``""`` -- which is how the store helper parks a
+          language it must not invent content for -- is "no document" exactly like
+          an absent key.  Filtering on the value rather than the key is what makes
+          both shapes count as cold, and is the same question the read path asks.
         """
         self.env.flush_all()
         self.env.cr.execute(
@@ -121,6 +130,33 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
                          self.website.with_context(lang='en_US').llm_txt_cache)
         self.assertEqual(self._cache_keys('llm_txt_cache'), ['en_US', 'fr_FR'])
 
+    def test_first_cache_write_in_a_foreign_language_leaves_en_us_cold(self):
+        """The fallback injection: QA-11 with the two languages swapped.
+
+        Warming French *first*, on a column that has never been written, is the
+        one order the shipped code got wrong without anyone noticing: the merge
+        seeds the missing en_US key from the value it is writing
+        (``odoo17/odoo/models.py:4551-4560``), so the French document also lands
+        under ``en_US`` and the next English crawler takes a cache hit on French
+        text.  Every other test here warms English first, and then the key already
+        exists and the fallback never fires -- which is how it stayed invisible.
+        """
+        self._set_french_settings()
+        fr = self.website.with_context(lang='fr_FR')
+        self.assertIn('# Société de test en français', fr.get_llms_txt_content())
+        self.assertIn('# Société de test en français - Full Markdown Export',
+                      fr.get_llms_full_txt_content())
+
+        self.assertEqual(self._cache_keys('llm_txt_cache'), ['fr_FR'],
+                         'a French pass must not create an en_US document')
+        self.assertEqual(self._cache_keys('llm_full_txt_cache'), ['fr_FR'])
+
+        en = self.website.with_context(lang='en_US')
+        self.assertIn('# Language Test Company', en.get_llms_txt_content(),
+                      'the English crawler must regenerate, not hit the French cache')
+        self.assertEqual(self._cache_keys('llm_txt_cache'), ['en_US', 'fr_FR'],
+                         'both keys must exist once both languages have been served')
+
     def test_invalidation_clears_every_language_key(self):
         """The jsonb trap: warming both keys, then invalidating from a
         *third* language environment, must leave neither behind."""
@@ -129,7 +165,8 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
             website = self.website.with_context(lang=lang)
             website.get_llms_txt_content()
             website.get_llms_full_txt_content()
-            website.sudo().write({'llm_page_cache': website._generate_llm_page_cache()})
+            website.sudo()._llms_cache_store(
+                'llm_page_cache', website._generate_llm_page_cache())
         self.assertEqual(self._cache_keys('llm_txt_cache'), ['en_US', 'fr_FR'],
                          'precondition: both keys must be warmed')
 

@@ -1,23 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- QA-12.  This is the screen an Odoo 19 website editor actually opens for
-         page settings: the frontend "Page Properties" dialog, which is built on
-         the transient model website.page.properties and whose view is fetched by
-         reference (`form_view_ref=website.website_page_properties_view_form`,
-         see odoo19/addons/website/static/src/components/dialog/page_properties.js:236).
-         Core's own controls - Indexed, Published, Visibility, Is a Template -
-         are all related fields written through here, so extending it is the
-         documented way in, and it is the only place the advertised "single
-         checkbox" was ever missing. -->
+    <!-- QA-12.  On Odoo 17 this is the screen a website editor actually opens for
+         page settings: the frontend "Page Properties" dialog, whose view is fetched
+         by reference (`form_view_ref='website.website_page_properties_view_form'`,
+         see odoo17/addons/website/static/src/components/dialog/page_properties.js:204).
+         Odoo 17 has no website.page.properties transient: that dialog form is a
+         `website.page` view (website/views/website_pages_views.xml:31-57), so the
+         two controls are added straight onto the page record - which is also what
+         makes a write here land on website.page.write and reuse the invalidation
+         hook from QA-38, with no second cache-clearing path to keep in sync.
+         Core's own controls - Indexed, Published, Visibility, Authorized Groups -
+         are all on this same form. -->
     <record id="website_page_properties_view_form_inherit_llm" model="ir.ui.view">
-        <field name="name">website.page.properties.form.inherit.llm</field>
-        <field name="model">website.page.properties</field>
+        <field name="name">website.page.form.inherit.llm.properties</field>
+        <field name="model">website.page</field>
         <field name="inherit_id" ref="website.website_page_properties_view_form"/>
         <field name="arch" type="xml">
-            <!-- "Is a Template" is core's last control in the dialog group; anchor
-                 on it instead of "//group/*[last()]" so the insertion stays inside
-                 the group whatever else inherits this view later. -->
-            <xpath expr="//field[@name='is_new_page_template']" position="after">
+            <!-- "Authorized Groups" is core's last control in the Publish group;
+                 anchor on it instead of "//group/*[last()]" so the insertion stays
+                 inside the group whatever else inherits this view later. -->
+            <xpath expr="//field[@name='groups_id']" position="after">
                 <field name="llm_exclude"
                        widget="boolean_toggle"
                        options="{'autosave': False}"

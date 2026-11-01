@@ -13,18 +13,22 @@ These tests deliberately avoid the browser and assert what the browser would
 have to fetch: the *same* view the web client resolves for the screen in
 question.  Two traps are worth naming:
 
-* ``website.page.properties`` has **no primary form view for its own model** --
-  ``ir.ui.view.default_view()`` returns ``False`` for it, so
-  ``get_view(view_type='form')`` hands back an ORM-generated default that lists
-  every field automatically.  A test written against that arch would pass while
-  the real dialog stayed empty.  The dialog passes
-  ``form_view_ref='website.website_page_properties_view_form'`` instead
-  (``odoo19/addons/website/static/src/components/dialog/page_properties.js:236``)
-  and that is what is reproduced here.
+* The Page Properties dialog does not use ``website.page``'s default form view.
+  On this branch the dialog's ``resModel`` *is* ``website.page`` -- Odoo 17 has
+  no ``website.page.properties`` transient; that came later -- and it pins its
+  arch by reference, with ``form_view_ref='website.website_page_properties_view_form'``
+  (``odoo17/addons/website/static/src/components/dialog/page_properties.js:200-205``).
+  The view it names is a second ``website.page`` form
+  (``odoo17/addons/website/views/website_pages_views.xml:31-57``), distinct from
+  the backend ``website_pages_form_view``.  ``get_view(view_type='form')``
+  without the ref resolves whichever of them ``ir.ui.view.default_view()``
+  returns, so a test written against that arch can pass while the real dialog
+  stays empty.  The ref is therefore passed here too.
 * The same is true of the backend: core's ``website_pages_form_view`` inherits
   cleanly and *is* returned by ``get_view``, yet QA-12's finding stands because
-  ``action_website_pages_list`` binds only ``list,kanban`` -- no screen offers
-  the form.  So the guard here is on the action, not on the view.
+  ``action_website_pages_list`` binds only ``tree,kanban``
+  (``odoo17/addons/website/views/website_pages_views.xml:162``) -- no screen
+  offers the form.  So the guard here is on the action, not on the view.
 """
 
 import re
@@ -67,8 +71,15 @@ class TestLlmsUiReachability(TransactionCase):
     # -- helpers ---------------------------------------------------------
 
     def _dialog_arch(self):
-        """The arch the frontend fetches for the Page Properties dialog."""
-        return self.env['website.page.properties'].sudo().with_context(
+        """The arch the frontend fetches for the Page Properties dialog.
+
+        Same model, same ``form_view_ref`` as ``PagePropertiesDialog``: on 17
+        that dialog edits a ``website.page`` (``page_properties.js:200``).
+        ``get_view`` honours ``TYPE_view_ref`` in context and nothing else,
+        which is exactly the contract the client relies on
+        (``odoo17/odoo/addons/base/models/ir_ui_view.py:2634-2642``).
+        """
+        return self.env['website.page'].sudo().with_context(
             form_view_ref=PAGE_PROPERTIES_VIEW_REF,
         ).get_view(view_type='form')['arch']
 
@@ -107,17 +118,31 @@ class TestLlmsUiReachability(TransactionCase):
                 'readonly', tag,
                 '%s is readonly in the dialog, so an editor cannot change it' % field)
 
-    def test_page_properties_write_through(self):
-        """Writing the dialog record must land on the page itself."""
-        properties = self.env['website.page.properties'].sudo().create({
-            'target_model_id': self.page_home.id,
-            'website_id': self.website.id,
+    def test_page_properties_dialog_writes_the_page_record(self):
+        """On this branch the dialog edits the page; there is no transient.
+
+        The assertion is about the shape the view file was written for: our
+        controls must hang off *that* view, on that model.  If the upstream
+        dialog ever moves to its own record, this fails and the inheritance
+        anchor gets revisited -- rather than shipping fields into a form the
+        client no longer renders.
+        """
+        dialog = self.env.ref(PAGE_PROPERTIES_VIEW_REF)
+        self.assertEqual(
+            dialog.model, 'website.page',
+            'the dialog view is no longer a website.page form, so the '
+            'inheritance anchor in website_page_properties_views.xml is wrong')
+        self.assertEqual(
+            self.env.ref('llms_txt_agent.website_page_properties_view_form_inherit_llm').inherit_id,
+            dialog,
+            'the LLM controls are not attached to the view the dialog renders')
+
+        self.assertFalse(self.page_home.llm_exclude)
+        self.page_home.write({
+            'llm_exclude': True,
+            'llm_custom_description': 'Written from the dialog.',
         })
-        self.assertEqual(properties.llm_exclude, False)
-        properties.write({'llm_exclude': True, 'llm_custom_description': 'Written from the dialog.'})
-        self.assertTrue(
-            self.page_home.llm_exclude,
-            'the dialog checkbox does not write through to website.page')
+        self.assertTrue(self.page_home.llm_exclude)
         self.assertEqual(
             self.page_home.llm_custom_description, 'Written from the dialog.')
 
@@ -126,11 +151,8 @@ class TestLlmsUiReachability(TransactionCase):
         before = self.website._generate_llms_txt()
         self.assertIn('/ui-home', before)
 
-        properties = self.env['website.page.properties'].sudo().create({
-            'target_model_id': self.page_home.id,
-            'website_id': self.website.id,
-        })
-        properties.write({'llm_exclude': True})
+        # the payload the dialog's save button sends
+        self.page_home.write({'llm_exclude': True})
 
         self.assertFalse(
             self.website.llm_txt_cache,
@@ -142,18 +164,14 @@ class TestLlmsUiReachability(TransactionCase):
     def test_page_properties_write_restores_the_page(self):
         """The other direction too: un-checking must put the page back."""
         self.page_home.llm_exclude = True
-        properties = self.env['website.page.properties'].sudo().create({
-            'target_model_id': self.page_home.id,
-            'website_id': self.website.id,
-        })
-        properties.write({'llm_exclude': False})
+        self.page_home.write({'llm_exclude': False})
         self.assertFalse(self.page_home.llm_exclude)
         self.assertIn('/ui-home', self.website._generate_llms_txt())
 
     # -- QA-12: the backend ----------------------------------------------
 
     def test_backend_pages_action_offers_a_form(self):
-        """Core's Pages action is list,kanban only, so we ship our own.
+        """Core's Pages action is tree,kanban only, so we ship our own.
 
         A form view that no action references is exactly what QA-12 was.
         """
@@ -170,34 +188,34 @@ class TestLlmsUiReachability(TransactionCase):
             self.assertIn('name="%s"' % field, arch)
 
     def test_backend_pages_action_rows_open_the_form(self):
-        """Core's list sets ``action="open_website_url"``, which is a dead end."""
+        """Core's tree sets ``action="open_website_url"``, which is a dead end."""
         action = self.env.ref('llms_txt_agent.llms_txt_pages_action')
-        list_view_id = next(
-            view_id for view_id, mode in action.views if mode == 'list')
+        tree_view_id = next(
+            view_id for view_id, mode in action.views if mode == 'tree')
         self.assertTrue(
-            list_view_id,
-            "the action must bind its own list view, not inherit core's "
+            tree_view_id,
+            "the action must bind its own tree view, not inherit core's "
             'open_website_url behaviour')
         arch = self.env['website.page'].sudo().get_view(
-            view_id=list_view_id, view_type='list')['arch']
+            view_id=tree_view_id, view_type='tree')['arch']
         self.assertNotIn(
             'open_website_url', arch,
             'clicking a row must open the settings form, not the public page')
-        self.assertIn('name="llm_exclude"', arch, 'the exclusion flag should be visible in the list')
+        self.assertIn('name="llm_exclude"', arch, 'the exclusion flag should be visible in the tree')
 
-    def test_backend_pages_list_is_not_the_default_list_view(self):
-        """Our list is bound by id; it must not hijack every other screen.
+    def test_backend_pages_tree_is_not_the_default_tree_view(self):
+        """Our tree is bound by id; it must not hijack every other screen.
 
         ``ir.ui.view.default_view()`` returns the *lowest* priority view for a
         model and type, so an unthinking small ``priority`` here would quietly
-        replace core's Pages list wherever a default is resolved.
+        replace core's Pages tree wherever a default is resolved.
         """
         own = self.env.ref('llms_txt_agent.llms_txt_pages_tree_view')
         core = self.env.ref('website.website_pages_tree_view')
-        default_id = self.env['ir.ui.view'].sudo().default_view('website.page', 'list')
+        default_id = self.env['ir.ui.view'].sudo().default_view('website.page', 'tree')
         self.assertEqual(
             default_id, core.id,
-            'the module changed which list view Odoo picks by default')
+            'the module changed which tree view Odoo picks by default')
         self.assertGreater(own.priority, core.priority)
 
     def test_backend_pages_menu_is_restricted_to_page_editors(self):
@@ -241,9 +259,11 @@ class TestLlmsUiReachability(TransactionCase):
     # -- QA-35: no view-validation warnings from our anchors --------------
 
     def test_settings_preview_anchors_declare_role_button(self):
-        """``<a class="btn">`` without ``role`` fails Odoo 19 view validation.
+        """``<a class="btn">`` without ``role`` logs a view-validation warning.
 
-        The warning is what QA-35 is about; asserting on the fetched arch is the
+        On this branch the check is ``ir.ui.view._validate_tag_a``
+        (``odoo17/odoo/addons/base/models/ir_ui_view.py:1613-1618``).  The
+        warning is what QA-35 is about; asserting on the fetched arch is the
         deterministic half of it (the log-scanning half needs a live install).
         """
         arch = self.env['res.config.settings'].sudo().get_view(view_type='form')['arch']
