@@ -5,11 +5,10 @@
 
         noupdate="1" stays, on purpose: a customer who deactivated this cron or gave
         it their own interval must not have that silently undone by an upgrade.  The
-        interval is hourly because "Cached (Hourly)" (QA-16, FINDINGS D-F) now
-        derives its Cache-Control from the same table this cron works on; the
-        shipped 6-hour value is corrected on existing databases by
-        migrations/19.0.1.1.0/post-migration.py, which only rewrites a record that
-        still carries the old default.  The job itself skips any website whose cache
+        interval is hourly because "Cached (Hourly)" (QA-16, FINDINGS D-F) derives its
+        Cache-Control from the same table this cron works on.  This branch ships hourly
+        from the start, so there is no older 6-hour record to correct and no migration
+        script to carry.  The job itself skips any website whose cache
         is not stale yet, which is what makes three of these crons on a combined
         install cost one rebuild instead of three (QA-33).
         -->

@@ -77,7 +77,8 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
             website._invalidate_llms_cache()
             website.get_llms_txt_content()
             website.get_llms_full_txt_content()
-            website.sudo().write({'llm_page_cache': website._generate_llm_page_cache()})
+            website.sudo()._llms_cache_store(
+                'llm_page_cache', website._generate_llm_page_cache())
 
     def _assert_cached(self, website, msg):
         self.assertTrue(website.llm_txt_cache, f'{msg}: llm_txt_cache should still be there')
@@ -127,10 +128,14 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
     def test_cache_write_does_not_invalidate_itself(self):
         """The guard is mandatory: writing the cache must not wipe the cache.
 
-        Without the ``LLM_CACHE_FIELDS`` exclusion, ``get_llms_txt_content()``
-        writes the freshly generated document, that write invalidates the cache
-        it just filled, and every crawler request regenerates from scratch —
-        the "high-performance <5ms cache" becomes a full regeneration per hit.
+        On this branch the read path fills the column through
+        ``_llms_cache_store()``, which goes straight to the translation writer,
+        so the exclusion is not what keeps a warm cache warm here -- it is what
+        keeps *any* direct ``write()`` of a document (an import, an upgrade
+        helper, a companion that still caches through the ORM) from invalidating
+        the cache it just filled.  Without that, every crawler request would
+        regenerate from scratch -- the "high-performance <5ms cache" becomes a
+        full regeneration per hit.
         """
         self._warm(self.website_a)
         stamp = self.website_a.llm_cache_last_updated

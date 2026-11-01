@@ -188,13 +188,15 @@ def response_headers(content, content_type, cache_control, lang=None,
     if lang:
         # QA-24: the document is per-language, so a shared cache may not reuse it
         # across languages.  ``Content-Language`` describes what we sent.  ``Vary``
-        # has to name *both* headers because in Odoo 19 the language of a frontend
-        # response does not come from Accept-Language at all -- http_routing picks
-        # the URL prefix, then the ``frontend_lang`` cookie, then the context
-        # (``odoo19/addons/http_routing/models/ir_http.py:403-407``), and nothing in
-        # core reads Accept-Language.  Varying on it alone would still let a CDN
-        # answer a French crawler with the English body it stored for the crawler
-        # before it, which is the exact outage QA-24 was written to prevent.
+        # has to name *both* headers because on this branch the language of a
+        # frontend response does not come from Accept-Language at all --
+        # http_routing picks the URL prefix, then the ``frontend_lang`` cookie,
+        # then the context, then the website default
+        # (``odoo18/addons/http_routing/models/ir_http.py:415-421``), and nothing
+        # in core reads Accept-Language.  Varying on it alone would still let a
+        # CDN answer a French crawler with the English body it stored for the
+        # crawler before it, which is the exact outage QA-24 was written to
+        # prevent.
         headers.append(('Content-Language', lang))
         headers.append(('Vary', 'Accept-Language, Cookie'))
     return headers

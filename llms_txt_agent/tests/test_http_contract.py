@@ -180,12 +180,12 @@ class TestLlmsHttpContract(HttpCase):
         back to the record.
 
         Hardened with the ORM fact the first draft learned the hard way:
-        ``write_date`` comes from ``cr.now()`` (``odoo/orm/models.py:4396``) and
-        PostgreSQL fixes the transaction timestamp at the first statement, so every
-        ORM write inside one ``TransactionCase`` gets the *same* ``write_date``.  The
-        record stamp is therefore moved with a SQL UPDATE, which is what a second
-        crawler request sees in production after a write committed in an earlier
-        transaction.
+        ``write_date`` comes from ``cr.now()`` (``odoo18/odoo/models.py:4893``, set
+        inside ``_write_multi()``, which starts at ``:4881``) and PostgreSQL fixes
+        the transaction timestamp at the first statement, so every ORM write inside
+        one ``TransactionCase`` gets the *same* ``write_date``.  The record stamp is
+        therefore moved with a SQL UPDATE, which is what a second crawler request
+        sees in production after a write committed in an earlier transaction.
         """
         stamp_pushed_back = fields.Datetime.now() - timedelta(hours=2)
         self.env.cr.execute(
@@ -277,16 +277,16 @@ class TestLlmsHttpContract(HttpCase):
         """QA-24, tightened while implementing QA-25.
 
         W3 shipped ``Vary: Accept-Language`` because that is what a language-
-        negotiated document usually varies on -- but in Odoo 19 the frontend
+        negotiated document usually varies on -- but on this branch the frontend
         language is *not* taken from Accept-Language at all: http_routing picks the
-        URL prefix, then the ``frontend_lang`` cookie, then the context
-        (``odoo19/addons/http_routing/models/ir_http.py:403-407``), and neither
-        ``http_routing``, ``website`` nor ``odoo/http.py`` reads the Accept-Language
-        header anywhere (``grep -i accept-language`` over the tree returns only core's
-        own tests).  A cache told to vary on Accept-Language alone is therefore still
-        free to answer the French crawler with the body it stored for the crawler
-        before it, which is exactly the outage QA-24 was written to prevent.  The
-        language travels in a cookie, so the cookie has to be named.
+        URL prefix, then the ``frontend_lang`` cookie, then the context, then the
+        website default (``odoo18/addons/http_routing/models/ir_http.py:415-421``),
+        and neither ``http_routing``, ``website`` nor ``odoo/http.py`` reads the
+        Accept-Language header anywhere (``grep -i accept-language`` over those
+        files returns nothing).  A cache told to vary on Accept-Language alone is
+        therefore still free to answer the French crawler with the body it stored
+        for the crawler before it, which is exactly the outage QA-24 was written to
+        prevent.  The language travels in a cookie, so the cookie has to be named.
         """
         for path in self._paths():
             r = self.url_open(path)
@@ -305,27 +305,33 @@ class TestLlmsHttpContract(HttpCase):
 
         The investigation, because the brief asked for one before any change:
         the cookie is *not* written by this module.  It is ``odoo.http``'s own
-        ``_save_session()`` (``odoo19/odoo/http.py:2187-2194``), which sets the
-        cookie whenever the request's ``session_id`` differs from the session's --
-        true for every anonymous first visit, at ``max-age`` = the configured
+        ``Request._save_session()`` (``odoo18/odoo/http.py:2002-2016``), which sets
+        the cookie whenever the request's ``session_id`` differs from the session's
+        -- true for every anonymous first visit, at ``max-age`` = the configured
         session inactivity (7 days).  Proof it is platform-wide: the QA baseline
         ``qa_evidence/out/s12g6_warm_headers.log:29`` shows it on all four routes,
         with a different sid per request.
 
-        Odoo does give a route a documented way out -- the ``save_session`` routing
-        key (``odoo19/odoo/http.py:805-807``, honoured at ``:2423``; core uses it
-        itself for ``auth='bearer'`` at ``:828-829``) -- and these four routes are
-        genuinely stateless: the website comes from the request host
-        (``odoo19/addons/website/models/website.py:1395-1408``) and the language
-        from the ``frontend_lang`` cookie
-        (``odoo19/addons/http_routing/models/ir_http.py:405``), neither of which
-        requires a saved session.  So this half of QA-36 is a module fix.
+        Odoo does give a route a way out: ``Dispatcher.pre_dispatch()`` copies the
+        routing dict's ``save_session`` key onto the session as ``can_save``
+        (``odoo18/odoo/http.py:2214``) and ``_save_session()`` returns before
+        minting anything when it is false (``:2006``).  The key is not listed among
+        the decorator's documented params on this branch, but nothing filters it
+        out of the merged routing dict either, and pre_dispatch reading it is the
+        part that matters.  These four routes are genuinely stateless: the website
+        comes from the request host
+        (``odoo18/addons/website/models/website.py:1360-1376``, cached by
+        ``_get_current_website_id`` at ``:1378-1380``) and the language from the
+        ``frontend_lang`` cookie
+        (``odoo18/addons/http_routing/models/ir_http.py:446-467``), neither of
+        which requires a saved session.  So this half of QA-36 is a module fix.
 
         The *other* half is not: the ``frontend_lang`` cookie is set by core's
         ``_frontend_pre_dispatch()``
-        (``odoo19/addons/http_routing/models/ir_http.py:514-517``) on every frontend
-        response whose language differs from the cookie, and a module cannot avoid
-        it without overriding core dispatch.  Recorded as WON'T FIX in QA_REPORT.
+        (``odoo18/addons/http_routing/models/ir_http.py:529-532``) on every
+        frontend response whose language differs from the cookie, and a module
+        cannot avoid it without overriding core dispatch.  Recorded as WON'T FIX
+        in QA_REPORT.
         """
         for path in self._paths():
             r = self.url_open(path)
@@ -466,11 +472,14 @@ class TestLlmsCronContract(TransactionCase):
         (rule 4) -- and the per-website freshness check is what makes the extra
         crons cost nothing.
 
-        The crons are *not* fired with ``method_direct_trigger()`` here: that runs
-        the job through a second database cursor
-        (``odoo/addons/base/models/ir_cron.py:150-169``), which blocks on the locks
-        the enclosing test transaction already holds -- an earlier draft of this
-        test hung the whole suite on exactly that.  So each cron's code is checked
+        The crons are *not* fired with ``method_direct_trigger()``.  On this branch
+        that path grabs a NOWAIT row lock on the cron, runs its server action and
+        stamps ``lastcall`` in the caller's cursor
+        (``odoo18/odoo/addons/base/models/ir_cron.py:114-124``), i.e. it wraps the
+        model method under test in bookkeeping that can itself fail on a row the
+        enclosing transaction already touched -- and on the series where the job
+        gets its own cursor it blocks on the locks this test holds, which is how an
+        earlier draft hung the whole suite.  So each cron's code is checked
         to be the one model call, and that call is then made once per cron in this
         cursor, which is what the scheduler would have run.
         """
@@ -589,8 +598,9 @@ class TestLlmsRouteRules(TransactionCase):
         """QA-36 at the routing layer: the key that keeps a crawler hit stateless.
 
         Asserted here as well as on the live response because the behaviour comes
-        from this dict -- ``pre_dispatch()`` reads ``save_session`` out of it
-        (``odoo19/odoo/http.py:2423``) and nothing else can turn the cookie off.
+        from this dict -- ``Dispatcher.pre_dispatch()`` reads ``save_session`` out
+        of it (``odoo18/odoo/http.py:2213-2214``) and nothing else can turn the
+        cookie off.
         """
         for path in INDEX_PATHS + ITEM_RULES:
             endpoints = self._rules_for(path)

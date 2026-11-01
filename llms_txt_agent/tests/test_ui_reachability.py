@@ -14,12 +14,15 @@ have to fetch: the *same* view the web client resolves for the screen in
 question.  Two traps are worth naming:
 
 * ``website.page.properties`` has **no primary form view for its own model** --
-  ``ir.ui.view.default_view()`` returns ``False`` for it, so
-  ``get_view(view_type='form')`` hands back an ORM-generated default that lists
-  every field automatically.  A test written against that arch would pass while
-  the real dialog stayed empty.  The dialog passes
+  ``ir.ui.view.default_view()`` only accepts a ``mode='primary'`` view
+  (``odoo18/odoo/addons/base/models/ir_ui_view.py:593-604``) and core's
+  ``website_page_properties_view_form`` is an extension of the base view
+  (``odoo18/addons/website/views/website_pages_views.xml:50-53``), so it returns
+  ``False`` and ``get_view(view_type='form')`` hands back an ORM-generated default
+  that lists every field automatically.  A test written against that arch would
+  pass while the real dialog stayed empty.  The dialog passes
   ``form_view_ref='website.website_page_properties_view_form'`` instead
-  (``odoo19/addons/website/static/src/components/dialog/page_properties.js:236``)
+  (``odoo18/addons/website/static/src/components/dialog/page_properties.js:236-238``)
   and that is what is reproduced here.
 * The same is true of the backend: core's ``website_pages_form_view`` inherits
   cleanly and *is* returned by ``get_view``, yet QA-12's finding stands because
@@ -241,10 +244,13 @@ class TestLlmsUiReachability(TransactionCase):
     # -- QA-35: no view-validation warnings from our anchors --------------
 
     def test_settings_preview_anchors_declare_role_button(self):
-        """``<a class="btn">`` without ``role`` fails Odoo 19 view validation.
+        """``<a class="btn">`` without ``role`` logs a view-validation warning.
 
-        The warning is what QA-35 is about; asserting on the fetched arch is the
-        deterministic half of it (the log-scanning half needs a live install).
+        On this branch the check is ``ir.ui.view._validate_tag_a``
+        (``odoo18/odoo/addons/base/models/ir_ui_view.py:1761-1766``) -- a warning,
+        not an error, so nothing fails loudly.  The warning is what QA-35 is about;
+        asserting on the fetched arch is the deterministic half of it (the
+        log-scanning half needs a live install).
         """
         arch = self.env['res.config.settings'].sudo().get_view(view_type='form')['arch']
         block = self._settings_block(arch, 'website_llms_txt_setting')
