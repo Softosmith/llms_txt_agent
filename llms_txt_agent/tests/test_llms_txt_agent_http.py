@@ -7,7 +7,7 @@ from odoo.tests import HttpCase, tagged
 
 @tagged('post_install', '-at_install')
 class TestLlmsTxtAgentHttp(HttpCase):
-    """HTTP-level contract tests for the four llms routes.
+    """HTTP-level contract tests for the five llms routes.
 
     These tests assert the INTENDED behaviour of the module.  Where the shipped
     code is defective the test fails on purpose; the failure is the reproducible
