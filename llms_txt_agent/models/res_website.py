@@ -409,7 +409,7 @@ class Website(models.Model):
         """The ``Cache-Control`` this website's documents must be served with.
 
         QA-16 (FINDINGS D-F, S6, S12 G.7).  The string used to be hardcoded in
-        every controller -- ``public, max-age=3600`` on all four routes -- so
+        every controller -- ``public, max-age=3600`` on each of them -- so
         "Cached (Daily)" promised an hour to every CDN in front of the site, and
         "Real-time / Dynamic" promised a storeable document that the module
         generates again on every single request.  The label in Settings, the

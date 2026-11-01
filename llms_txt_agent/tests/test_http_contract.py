@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
-"""W5 -- the HTTP contract of the four llms routes (QA-16, QA-25, QA-32, QA-33, QA-37).
+"""W5 -- the HTTP contract of the five llms routes (QA-16, QA-25, QA-32, QA-33, QA-37).
 
 Everything here is asserted against a real request/response round trip or against
 the routing registry, because every defect in this band was invisible in the
@@ -309,12 +309,12 @@ class TestLlmsHttpContract(HttpCase):
         cookie whenever the request's ``session_id`` differs from the session's --
         true for every anonymous first visit, at ``max-age`` = the configured
         session inactivity (7 days).  Proof it is platform-wide: the QA baseline
-        ``qa_evidence/out/s12g6_warm_headers.log:29`` shows it on all four routes,
-        with a different sid per request.
+        ``qa_evidence/out/s12g6_warm_headers.log:29`` shows it on every route in
+        that baseline, with a different sid per request.
 
         Odoo does give a route a documented way out -- the ``save_session`` routing
         key (``odoo19/odoo/http.py:805-807``, honoured at ``:2423``; core uses it
-        itself for ``auth='bearer'`` at ``:828-829``) -- and these four routes are
+        itself for ``auth='bearer'`` at ``:828-829``) -- and these five routes are
         genuinely stateless: the website comes from the request host
         (``odoo19/addons/website/models/website.py:1395-1408``) and the language
         from the ``frontend_lang`` cookie
