@@ -22,11 +22,11 @@ class WebsiteLlmController(http.Controller):
     * **No header is written here** (QA-16, QA-25).  ``Cache-Control``,
       ``X-Robots-Tag``, ``ETag``, ``Last-Modified`` and the conditional-GET
       response all come from ``models/llms_http.py``, the one place that knows the
-      contract.  Hardcoding ``public, max-age=3600`` in four handlers is precisely
-      how "Cached (Daily)" ended up promising an hour, and how ``/llms.md`` ended
-      up with no ``Cache-Control`` at all.
+      contract.  Hardcoding ``public, max-age=3600`` in the four handlers then in
+      place is precisely how "Cached (Daily)" ended up promising an hour, and how
+      ``/llms.md`` ended up with no ``Cache-Control`` at all.
 
-    ``save_session=False`` on all four routes (QA-36): these documents are
+    ``save_session=False`` on all five routes (QA-36): these documents are
     anonymous, host-resolved and stateless, yet every crawler hit was getting a
     fresh 7-day ``session_id`` cookie *and* a row in the session store -- see
     ``tests/test_http_contract.py`` for the investigation.
