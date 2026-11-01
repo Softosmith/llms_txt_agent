@@ -175,9 +175,13 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
     def test_unrelated_page_field_does_not_invalidate(self):
         """QA-38: a write that cannot change the output must keep the cache.
 
-        S5 case 5.16 proved the shipped behaviour: touching ``date_publish``
-        (an unrelated field for the export) dropped every cached document, and
-        because the read path could not regenerate, crawlers got 403.
+        S5 case 5.16 proved the shipped behaviour: the old hook fired on *every*
+        field a form could write -- including the scheduled-publish date
+        (``date_publish`` on that 19.0 baseline, ``publish_on`` on this branch) --
+        so an unrelated write dropped every cached document, and because the read
+        path could not regenerate, crawlers got 403.  The published/scheduled date
+        is now a trigger on purpose (see ``LLM_PAGE_TRIGGER_FIELDS``), but the
+        template flag written below is not, and stays out.
         """
         self._warm(self.website_a, self.website_b)
         self.page_a.write({'is_new_page_template': True})
@@ -196,7 +200,7 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
             ('name', 'Renamed page'),
             ('url', '/qa-inval-a-moved'),
             ('is_published', False),
-            ('date_publish', '2030-01-01 00:00:00'),
+            ('publish_on', '2030-01-01 00:00:00'),
             ('website_indexed', False),
             ('llm_exclude', True),
             ('llm_custom_description', 'A bespoke AI summary.'),

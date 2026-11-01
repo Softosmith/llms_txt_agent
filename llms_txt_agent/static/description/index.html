@@ -19,15 +19,16 @@
             <span class="badge bg-primary px-3 py-2 fs-6 me-1">GEO</span>
             <span class="badge bg-primary px-3 py-2 fs-6 me-1">AEO</span>
             <span class="badge bg-info px-3 py-2 fs-6 me-1">llms.txt Standard</span>
-            <span class="badge bg-secondary px-3 py-2 fs-6 me-1">Odoo 19 &mdash; Website Pages</span>
+            <span class="badge bg-secondary px-3 py-2 fs-6 me-1">Odoo 20 &mdash; Website Pages</span>
             <span class="badge bg-dark px-3 py-2 fs-6">By Asad Ali &mdash; Softosmith</span>
         </div>
 
         <div class="oe_span12 text-center mb-5">
             <p class="text-muted" style="max-width: 820px; margin: 0 auto;">
-                This app publishes the files themselves. Every screenshot below is a capture
-                taken from a running Odoo 19 instance &mdash; the settings panel, the page
-                form, and the plain-text files fetched over HTTP &mdash; not a mock-up.
+                This app publishes the files themselves. Every screenshot below is a
+                capture taken from a running instance of this app &mdash; the settings
+                panel, the page form, and the plain-text files fetched over HTTP &mdash;
+                not a mock-up.
             </p>
         </div>
     </div>
@@ -287,9 +288,19 @@
                 from the <b>Preview /llms.txt</b> and <b>Preview /llms-full.txt</b>
                 buttons. Everything is stored per website.
             </p>
+            <p class="text-muted" style="max-width: 900px; margin: 12px auto 0;">
+                Odoo&nbsp;20 ships its own <b>LLMs.txt</b> box in this same section, for
+                writing the file by hand. This app's switch takes the
+                <code>/llms.txt</code> URL from it and generates the document from your
+                published pages instead &mdash; and switching this app off hands the URL
+                straight back, so text you already wrote in Odoo keeps being served. The
+                other endpoints (<code>/llms-full.txt</code>, <code>/llms.md</code> and the
+                per-page <code>.md</code> files) are ours and answer <i>404</i> while the
+                switch is off.
+            </p>
         </div>
         <div class="oe_span12 text-center">
-            <img src="screenshot_settings.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search SEO (llms.txt and Markdown) block in Odoo 19 Website settings, as rendered by the module"/>
+            <img src="screenshot_settings.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search SEO (llms.txt and Markdown) block in Website settings, as rendered by the module"/>
         </div>
     </div>
 </section>
@@ -345,7 +356,7 @@
             </p>
         </div>
         <div class="oe_span12 text-center">
-            <img src="screenshot_page_control.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search Optimization group with Exclude from llms.txt and Custom AI Description (Markdown) on an Odoo 19 website page form"/>
+            <img src="screenshot_page_control.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search Optimization group with Exclude from llms.txt and Custom AI Description (Markdown) on a website page form"/>
         </div>
         <div class="oe_span12 text-center mt-4">
             <img src="screenshot_pages_list.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="The AI Search Pages (llms.txt) list screen added by the module under the Website app"/>
@@ -359,14 +370,14 @@
             <h3 class="oe_slogan">The real output, straight from a running instance</h3>
             <p class="text-muted" style="max-width: 900px; margin: 0 auto;">
                 Not a redrawn example: this is the <code>/llms.txt</code> body that
-                <code>GPTBot</code> actually received from a scratch Odoo 19 database with
+                <code>GPTBot</code> actually received from a scratch Odoo database with
                 this module installed. The <code>127.0.0.1:18099</code> host is that
                 developer instance &mdash; on your server the same lines carry your own
                 domain.
             </p>
         </div>
         <div class="oe_span12 text-center">
-            <img src="screenshot_output.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="Real /llms.txt response served by LLMs.txt Agent, captured from a running Odoo 19 instance"/>
+            <img src="screenshot_output.png" class="img-fluid rounded shadow-sm oe_picture oe_screenshot" alt="Real /llms.txt response served by LLMs.txt Agent, captured from a running instance"/>
         </div>
     </div>
 </section>
@@ -417,7 +428,8 @@
                 <tbody>
                     <tr>
                         <td class="fw-bold" style="width: 34%;">Odoo versions</td>
-                        <td>19.0 &mdash; tested on Community. The module ships no
+                        <td>20.0 &mdash; this listing is the Odoo 20 branch, and Community
+                            is its target. The module ships no
                             Enterprise-only code and needs no Enterprise features, but
                             Enterprise editions have not been separately verified.</td>
                     </tr>

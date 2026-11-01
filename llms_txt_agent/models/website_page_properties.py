@@ -10,18 +10,24 @@ class WebsitePageProperties(models.TransientModel):
 
     ``llms_txt_agent`` already extended ``website.website_pages_form_view``, and
     that inheritance is correct -- ``get_view`` returns the fields -- but in
-    Odoo 19 nothing opens that form: the "Website Pages" action is
-    ``list,kanban``, a list row opens the public URL, and the kanban card does
+    Odoo 20 nothing opens that form: the "Website Pages" action is
+    ``list,kanban`` (``odoo20/addons/website/views/website_pages_views.xml:202-206``),
+    a list row opens the public URL (``...:116``), and the kanban card does
     too.  The one screen a website editor really uses for page settings is the
     frontend **Page Properties** dialog, and that dialog runs on this transient
     model, not on ``website.page``.
 
     The pattern is core's own: ``website.page.properties`` exposes ``name``,
     ``url``, ``website_indexed``, ``visibility`` as writable related fields on
-    ``target_model_id`` (``odoo19/addons/website/models/website_page_properties.py:151-159``),
-    and the dialog saves them straight onto the page.  A write here therefore
-    goes through ``website.page.write`` and reuses the invalidation hook from
-    QA-38 -- no second cache-clearing path to keep in sync.
+    ``target_model_id``
+    (``odoo20/addons/website/models/website_page_properties.py:201-208``), and
+    the dialog saves them straight onto the page.  On this branch that pointer is
+    a plain ``Many2one('website.page')`` rather than the ``Reference`` the base
+    model still uses (``website.page.properties.base``, ``...:10``), so the
+    related path below resolves statically at registry load instead of only
+    becoming valid once a record is picked.  A write here therefore goes through
+    ``website.page.write`` and reuses the invalidation hook from QA-38 -- no
+    second cache-clearing path to keep in sync.
     """
 
     _inherit = 'website.page.properties'

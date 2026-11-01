@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
-"""W5 -- the HTTP contract of the four llms routes (QA-16, QA-25, QA-32, QA-33, QA-37).
+"""W5 -- the HTTP contract of the five llms routes (QA-16, QA-25, QA-32, QA-33, QA-37).
 
 Everything here is asserted against a real request/response round trip or against
 the routing registry, because every defect in this band was invisible in the
@@ -26,7 +26,7 @@ import hashlib
 from datetime import timedelta, timezone
 from email.utils import format_datetime
 
-from odoo import fields, http as odoo_http
+from odoo import fields
 from odoo.tests import HttpCase, TransactionCase, tagged
 from odoo.tools import config
 
@@ -277,13 +277,16 @@ class TestLlmsHttpContract(HttpCase):
         """QA-24, tightened while implementing QA-25.
 
         W3 shipped ``Vary: Accept-Language`` because that is what a language-
-        negotiated document usually varies on -- but in Odoo 19 the frontend
-        language is *not* taken from Accept-Language at all: http_routing picks the
-        URL prefix, then the ``frontend_lang`` cookie, then the context
-        (``odoo19/addons/http_routing/models/ir_http.py:403-407``), and neither
-        ``http_routing``, ``website`` nor ``odoo/http.py`` reads the Accept-Language
-        header anywhere (``grep -i accept-language`` over the tree returns only core's
-        own tests).  A cache told to vary on Accept-Language alone is therefore still
+        negotiated document usually varies on -- but on this branch the *frontend*
+        language is not taken from Accept-Language: http_routing picks the URL
+        prefix, then the ``frontend_lang`` cookie, then the context, then the
+        website default
+        (``odoo20/addons/http_routing/models/ir_http.py:415-425``) and writes the
+        chosen code back as a cookie (``:528-532``).  The one place 20.0 does read
+        Accept-Language is ``Request.default_lang()``
+        (``odoo20/odoo/http/requestlib.py:198-210,277-282``), which only seeds a
+        brand-new session's context -- it never decides the language of these
+        routes.  A cache told to vary on Accept-Language alone is therefore still
         free to answer the French crawler with the body it stored for the crawler
         before it, which is exactly the outage QA-24 was written to prevent.  The
         language travels in a cookie, so the cookie has to be named.
@@ -304,26 +307,31 @@ class TestLlmsHttpContract(HttpCase):
         row in the session store -- on a document that needs no state.
 
         The investigation, because the brief asked for one before any change:
-        the cookie is *not* written by this module.  It is ``odoo.http``'s own
-        ``_save_session()`` (``odoo19/odoo/http.py:2187-2194``), which sets the
-        cookie whenever the request's ``session_id`` differs from the session's --
-        true for every anonymous first visit, at ``max-age`` = the configured
-        session inactivity (7 days).  Proof it is platform-wide: the QA baseline
-        ``qa_evidence/out/s12g6_warm_headers.log:29`` shows it on all four routes,
-        with a different sid per request.
+        the cookie is *not* written by this module.  It is the platform's own
+        ``save_session()`` (``odoo20/odoo/http/session.py:663-697``, called from
+        ``odoo20/odoo/http/dispatcher.py:213``), which sets the cookie whenever the
+        request's ``session_id`` differs from the session's -- true for every
+        anonymous first visit, at ``max-age`` = the configured session inactivity
+        (7 days).  Proof it is platform-wide: the QA baseline
+        ``qa_evidence/out/s12g6_warm_headers.log:29`` shows it on every route in
+        that baseline, with a different sid per request.
 
         Odoo does give a route a documented way out -- the ``save_session`` routing
-        key (``odoo19/odoo/http.py:805-807``, honoured at ``:2423``; core uses it
-        itself for ``auth='bearer'`` at ``:828-829``) -- and these four routes are
-        genuinely stateless: the website comes from the request host
-        (``odoo19/addons/website/models/website.py:1395-1408``) and the language
-        from the ``frontend_lang`` cookie
-        (``odoo19/addons/http_routing/models/ir_http.py:405``), neither of which
+        key (documented at ``odoo20/odoo/http/routing_map.py:181-183``, honoured at
+        ``odoo20/odoo/http/dispatcher.py:176`` where it clears ``session.can_save``,
+        which is the first thing ``save_session()`` checks at
+        ``odoo20/odoo/http/session.py:675-676``; core sets it itself for
+        ``auth='bearer'`` at ``odoo20/odoo/http/routing_map.py:204-205``) -- and
+        these routes are genuinely stateless: the website comes from the request
+        host (``host_id`` resolved at ``odoo20/odoo/http/router.py:389`` and read as
+        ``env.website`` at ``odoo20/odoo/orm/environments.py:305-312``) and the
+        language from the ``frontend_lang`` cookie
+        (``odoo20/addons/http_routing/models/ir_http.py:419``), neither of which
         requires a saved session.  So this half of QA-36 is a module fix.
 
         The *other* half is not: the ``frontend_lang`` cookie is set by core's
         ``_frontend_pre_dispatch()``
-        (``odoo19/addons/http_routing/models/ir_http.py:514-517``) on every frontend
+        (``odoo20/addons/http_routing/models/ir_http.py:528-532``) on every frontend
         response whose language differs from the cookie, and a module cannot avoid
         it without overriding core dispatch.  Recorded as WON'T FIX in QA_REPORT.
         """
@@ -499,11 +507,24 @@ class TestLlmsRouteRules(TransactionCase):
     """QA-32: the three modules must not disagree at the routing layer."""
 
     def _rules_for(self, path):
-        """Every registry rule bound to ``path``, with its routing attributes."""
+        """Every registry rule bound to ``path``, with its routing attributes.
+
+        On this branch the generator is a model method, not a function in
+        ``odoo.http``: ``odoo20/odoo/addons/base/models/ir_http.py:512-514`` wraps the
+        moved helper (``odoo20/odoo/http/routing_map.py:230``), and the website
+        addon overrides it to apply 308/404 rewrites
+        (``odoo20/addons/website/models/ir_http.py:115-148``).  Calling it through
+        ``ir.http`` is what ``routing_map()`` itself does
+        (``odoo20/odoo/addons/base/models/ir_http.py:527``), so this reads the registry
+        exactly as the server builds it -- including, in a live request, the
+        rewrites of the website being served.  Outside a request the override
+        delegates straight to super (its ``if not request:`` guard at ``:116``,
+        safe because werkzeug's proxy is falsy when unbound).
+        """
         mods = sorted(self.env.registry._init_modules | set(config['server_wide_modules']))
         converters = self.env['ir.http']._get_converters()
         found = []
-        for url, endpoint in odoo_http._generate_routing_rules(mods, False, converters):
+        for url, endpoint in self.env['ir.http']._generate_routing_rules(mods, converters):
             if url == path:
                 found.append(endpoint)
         return found
@@ -589,8 +610,9 @@ class TestLlmsRouteRules(TransactionCase):
         """QA-36 at the routing layer: the key that keeps a crawler hit stateless.
 
         Asserted here as well as on the live response because the behaviour comes
-        from this dict -- ``pre_dispatch()`` reads ``save_session`` out of it
-        (``odoo19/odoo/http.py:2423``) and nothing else can turn the cookie off.
+        from this dict -- ``Dispatcher.pre_dispatch()`` reads ``save_session`` out
+        of it (``odoo20/odoo/http/dispatcher.py:176``) and nothing else can turn
+        the cookie off.
         """
         for path in INDEX_PATHS + ITEM_RULES:
             endpoints = self._rules_for(path)

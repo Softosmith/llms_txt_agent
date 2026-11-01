@@ -20,11 +20,28 @@ _TITLE_NORMALIZE = re.compile(r'[^\w]+', re.UNICODE)
 # on *every* page field, and FINDINGS S5 case 5.16 shows what that cost -- a
 # write to an unrelated field wiped the cache, and with the cold-cache read path
 # broken at the time, every endpoint dropped to 403 for crawlers.
-# ``date_publish`` is deliberately in the list: the index publishes a page once
-# its scheduled date passes, so scheduling does change the output.
+#
+# ``publish_on`` is this branch's name for what earlier branches called
+# ``date_publish``; it is in the list for the same reason and it has to be,
+# because the write path here is not symmetrical.  Scheduling a page writes
+# ``publish_on`` alone, and core's own mixin then forces ``is_published`` to
+# ``False`` *in its own copy of the vals*
+# (``odoo20/addons/website/models/mixins.py:622-637``: "Copy to avoid mutating
+# caller provided dictionary in-place").  This hook inspects the caller's
+# ``vals`` after ``super()``, so it never sees that added key -- without
+# ``publish_on`` here, scheduling a live page would un-publish it in the
+# database while /llms.txt went on advertising it.  When the schedule fires it
+# writes ``{'is_published': True, 'publish_on': False}``
+# (``...mixins.py:531``), which invalidates either way.
+#
+# ``url`` is in the list and is now a *translated* column
+# (``odoo20/addons/website/models/website_page.py:50``).  Renaming a page changes
+# the Markdown mirror path, so it must invalidate; and because the index and the
+# mirror both read ``url`` in the language being served, ``/contactu.md`` and the
+# link the French index advertises stay the same document.
 LLM_PAGE_TRIGGER_FIELDS = frozenset({
-    'name', 'url', 'is_published', 'date_publish', 'website_indexed',
-    'visibility', 'website_id', 'view_id', 'active', 'arch',
+    'name', 'url', 'is_published', 'website_published', 'publish_on',
+    'website_indexed', 'visibility', 'website_id', 'view_id', 'active', 'arch',
     'llm_exclude', 'llm_custom_description',
 })
 

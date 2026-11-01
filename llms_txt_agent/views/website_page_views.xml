@@ -17,7 +17,8 @@
     <!-- QA-12, part two: a form view that no action references is invisible,
          however correct it is.  Core's ir.actions.act_window
          "website.action_website_pages_list" (Website -> Site -> Content -> Pages)
-         binds list + kanban only, its list rows carry action="open_website_url",
+         binds list + kanban only (odoo20/addons/website/views/website_pages_views.xml:202-206),
+         its list rows carry action="open_website_url" (...:116),
          and its kanban card does the same - so the merged form above, and the
          AI group inside it, could never be opened from the backend.
 
@@ -31,7 +32,7 @@
         <field name="name">website.page.list.llms.txt</field>
         <field name="model">website.page</field>
         <!-- 200, on purpose: ir.ui.view.default_view() takes the *lowest*
-             priority (odoo19/odoo/addons/base/models/ir_ui_view.py:142,701), and
+             priority (odoo20/odoo/addons/base/models/ir_ui_view.py:156,703-705), and
              core's own website.page list sits at 99.  A smaller number here
              would silently become the fallback list for every other screen that
              resolves one, which is not ours to decide.  This action binds the
@@ -63,9 +64,12 @@
     </record>
 
     <!-- website.page has one ACL row in core, for group_website_designer
-         (odoo19/addons/website/security/ir.model.access.csv:12), so a menu open
+         (odoo20/addons/website/security/ir.access.csv:7), so a menu open
          to every employee would show an empty list to everyone else and break on
-         save.  Same group, same reach as core's own Pages menu. -->
+         save.  Same group, same reach as core's own Pages menu.
+         On this branch that file is named ir.access.csv: ir.model.access was
+         replaced by the ir.access model, and the CSV loader takes the target
+         model from the file name (odoo20/odoo/tools/convert.py:739-740). -->
     <menuitem id="llms_txt_pages_menu"
         name="AI Search Pages"
         parent="website.menu_content"

@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Odoo 20 core added its own "LLMs.txt" setting to this very block:
+         <block id="website_settings"> (odoo20/addons/website/views/res_config_settings_views.xml:101,
+         titled "Tracking & SEO") holds <setting id="llms_setting"> (...:195-204),
+         whose "Edit llms.txt" button opens a wizard over the plain field
+         website.llms_txt (odoo20/addons/website/models/website.py:181,
+         wizard at odoo20/addons/website/wizard/website_llms.py).
+         That is a hand-written file, not a generated one, and core serves it from
+         the same /llms.txt URL this app generates from the site's pages.
+
+         The two therefore need to be told apart on screen, and the routes make
+         the same promise: with "AI Search SEO" enabled this app answers /llms.txt;
+         turn it off and the request falls through to core, so the customer's own
+         text is served rather than a 404.  See the handover in
+         controllers/main.py. -->
     <record id="res_config_settings_view_form_inherit_website_llms_txt" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.website.llms.txt</field>
         <field name="model">res.config.settings</field>
@@ -7,7 +21,7 @@
         <field name="arch" type="xml">
             <xpath expr="//block[@id='website_settings']" position="inside">
                 <setting id="website_llms_txt_setting" string="AI Search SEO (llms.txt &amp; Markdown)"
-                         help="Generates structured machine-readable llms.txt and markdown content exports for AI search engines (ChatGPT, Claude, Perplexity, Gemini).">
+                         help="Generates structured machine-readable llms.txt and markdown content exports from your published pages for AI search engines (ChatGPT, Claude, Perplexity, Gemini). Takes over the /llms.txt URL from the manual 'LLMs.txt' setting in this section; disable this option to serve that hand-written text again.">
                     <field name="llm_enabled"/>
                     <div class="content-group" invisible="not llm_enabled">
                         <div class="row mt16">

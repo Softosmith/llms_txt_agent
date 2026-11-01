@@ -7,7 +7,11 @@ from odoo.tests import HttpCase, tagged
 
 @tagged('post_install', '-at_install')
 class TestLlmsTxtAgentHttp(HttpCase):
-    """HTTP-level contract tests for the four llms routes.
+    """HTTP-level contract tests for the five llms routes.
+
+    Three index documents (``/llms.txt``, ``/llms-full.txt``, ``/llms.md``) and
+    two per-page ones (``/llms/page/<id>.md`` and the URL mirror
+    ``/<page-url>.md``, ``/home.md`` included).
 
     These tests assert the INTENDED behaviour of the module.  Where the shipped
     code is defective the test fails on purpose; the failure is the reproducible
@@ -17,8 +21,15 @@ class TestLlmsTxtAgentHttp(HttpCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        # request.website resolves by host, and the test host matches no domain,
-        # so the served website is always the first one: configure that one
+        # The served website comes from the request host: the router resolves
+        # ``host_id`` with ``ir.http._get_host_id_from_domain()``
+        # (``odoo20/odoo/http/router.py:389``), which falls back to the website with
+        # the lowest ``(sequence, id)`` when no configured domain matches
+        # (``odoo20/odoo/addons/base/models/ir_http.py:273-275``), and website
+        # ``ir.http`` promotes that into ``context['website_id']`` for a
+        # ``website=True`` route (``odoo20/addons/website/models/ir_http.py:196-213``)
+        # -- which is what ``request.env.website`` reads.  The test host matches no
+        # domain, so the served website is always the first one: configure that one
         # instead of creating a second website the routes would never see.
         cls.website = cls.env['website'].search([], order='id', limit=1)
         cls.website.write({
@@ -110,10 +121,12 @@ class TestLlmsTxtAgentHttp(HttpCase):
         a setting (``website.homepage_url``) -- not the constant ``/``.
 
         Odoo ships the rule in ``website.page._compute_is_homepage``
-        (``odoo19/addons/website/models/website_page.py:58-61``): a page is the
-        homepage when its url equals ``website.homepage_url or '/'``.  The alias has
-        to follow that expression or a site that moved its homepage to ``/welcome``
-        gets a 404 on the one URL its own index points a crawler to.
+        (``odoo20/addons/website/models/website_page.py:92-96``): a page is the
+        homepage when its url -- read in the *website's default language*, because
+        ``website.page.url`` is translated here -- equals ``website.homepage_url or
+        '/'``.  The alias has to follow that expression or a site that moved its
+        homepage to ``/welcome`` gets a 404 on the one URL its own index points a
+        crawler to.
         """
         homepage = self.env['website.page'].create({
             'url': '/welcome',
@@ -145,6 +158,46 @@ class TestLlmsTxtAgentHttp(HttpCase):
     def test_disabled_website_returns_404_on_every_route(self):
         self.website.llm_enabled = False
         for path in ('/llms.txt', '/llms-full.txt', '/llms.md',
+                     f'/llms/page/{self.page.id}.md', '/http-test-page.md'):
+            self.assertEqual(self.url_open(path).status_code, 404, path)
+
+    def test_generated_document_wins_over_the_hand_written_one(self):
+        """On this branch ``/llms.txt`` is *Odoo's* URL as well as ours.
+
+        Core serves the text typed into the "Edit llms.txt" wizard
+        (``website.llms_txt``, ``odoo20/addons/website/models/website.py:181``, and
+        the handler at ``odoo20/addons/website/controllers/main.py:398-406``).  Our
+        controller extends that handler instead of registering a second rule on the
+        same path, so with the generator on, the generated document is what a
+        crawler gets -- even when the owner has filled the core field in.
+        """
+        self.website.llms_txt = '# Hand-written llms.txt\n\nShould not be served.'
+        r = self.url_open('/llms.txt')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('# HTTP Test Company', r.text,
+                      'core handler answered while the generator is enabled')
+        self.assertNotIn('Should not be served', r.text)
+        self.assertIn('/http-test-page.md', r.text)
+
+    def test_disabled_website_hands_the_llms_txt_url_over_to_core(self):
+        """Switching this app off must not switch the URL off.
+
+        ``test_disabled_website_returns_404_on_every_route`` above covers the case
+        where core has nothing to say (empty ``website.llms_txt`` -> its own
+        ``request.not_found()``).  This is the other half: the override returns
+        ``super().llms_txt()``, so the hand-written text is served by core's code,
+        with core's headers -- and the four paths core does *not* own keep 404-ing
+        rather than serving a document whose generator is off.
+        """
+        self.website.llm_enabled = False
+        self.website.llms_txt = '# Hand-written llms.txt\n\nHanded over by the module.'
+        r = self.url_open('/llms.txt')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Handed over by the module', r.text)
+        self.assertNotIn('HTTP Test Company', r.text,
+                         'the generator still answered while switched off')
+        self.assertEqual(r.headers['Content-Type'], 'text/plain; charset=utf-8')
+        for path in ('/llms-full.txt', '/llms.md',
                      f'/llms/page/{self.page.id}.md', '/http-test-page.md'):
             self.assertEqual(self.url_open(path).status_code, 404, path)
 

@@ -19,7 +19,7 @@ question.  Two traps are worth naming:
   every field automatically.  A test written against that arch would pass while
   the real dialog stayed empty.  The dialog passes
   ``form_view_ref='website.website_page_properties_view_form'`` instead
-  (``odoo19/addons/website/static/src/components/dialog/page_properties.js:236``)
+  (``odoo20/addons/website/static/src/components/dialog/page_properties.js:263-265``)
   and that is what is reproduced here.
 * The same is true of the backend: core's ``website_pages_form_view`` inherits
   cleanly and *is* returned by ``get_view``, yet QA-12's finding stands because
@@ -241,9 +241,11 @@ class TestLlmsUiReachability(TransactionCase):
     # -- QA-35: no view-validation warnings from our anchors --------------
 
     def test_settings_preview_anchors_declare_role_button(self):
-        """``<a class="btn">`` without ``role`` fails Odoo 19 view validation.
+        """``<a class="btn">`` without ``role`` fails view validation.
 
-        The warning is what QA-35 is about; asserting on the fetched arch is the
+        The rule is core's -- ``odoo20/odoo/addons/base/models/ir_ui_view.py:2191-2192``
+        still raises ``'"<a>" tag with "btn" class must have "button" role'`` -- and
+        the warning is what QA-35 is about; asserting on the fetched arch is the
         deterministic half of it (the log-scanning half needs a live install).
         """
         arch = self.env['res.config.settings'].sudo().get_view(view_type='form')['arch']

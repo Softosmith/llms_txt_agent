@@ -4,7 +4,7 @@
 
 {
     'name': 'LLMs.txt Agent: Website Pages AI SEO (GEO/AEO for ChatGPT, Gemini, Perplexity)',
-    'version': '19.0.1.2.0',
+    'version': '20.0.1.2.0',
     'category': 'Website/Website',
     'summary': 'Publish your website pages as AI SEO / GEO / AEO llms.txt & Markdown that ChatGPT, Gemini and Perplexity can read.',
     'description': """
@@ -93,7 +93,10 @@ Developed by Asad Ali at Softosmith (https://softosmith.com).
         'website',
     ],
     'data': [
-        'security/ir.model.access.csv',
+        # ir.model.access was replaced by ir.access in Odoo 20, and the CSV loader
+        # takes the target model from the file name (odoo20/odoo/tools/convert.py:739-740),
+        # so this file is named ir.access.csv here; the old name would raise on install.
+        'security/ir.access.csv',
         'data/ir_cron_data.xml',
         'views/res_config_settings_views.xml',
         'views/website_page_views.xml',

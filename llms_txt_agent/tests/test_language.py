@@ -11,8 +11,8 @@ from odoo.tests.common import TransactionCase, tagged
 class TestLlmsTxtAgentLanguage(TransactionCase):
     """The per-language cache keys behind QA-11 (FINDINGS D-A).
 
-    ``llm_txt_cache`` and ``llm_full_txt_cache`` are ``translate=True``, which
-    in Odoo 19 means one jsonb column holding ``{language_code: document}``.  Two
+    ``llm_txt_cache`` and ``llm_full_txt_cache`` are ``translate=True``, which on
+    this branch means one jsonb column holding ``{language_code: document}``.  Two
     properties of that layout are what broke the feature:
 
     * reading or writing the field touches **one** key -- the one named by the
@@ -86,11 +86,12 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
           the column is read -- otherwise a language warmed moments ago is
           invisible and the precondition fails for the wrong reason;
         * writing ``False`` to a translated field does **not** delete the key, it
-          stores JSON ``null`` under it (``col || {"en_US": null}`` in
-          ``odoo/orm/models.py:4564-4578``).  A null-valued key is "no document"
-          -- ``->>'lang'`` and ``COALESCE`` both treat it as missing -- so only
-          non-null keys count.  That same fact is why the read path has to ask
-          for one exact key instead of testing the column as a whole.
+          stores JSON ``null`` under it -- the flush merges the new map into the
+          column per key (``col || expr``,
+          ``odoo20/odoo/orm/models.py:4038-4055``).  A null-valued key is "no
+          document" -- ``->>'lang'`` and ``COALESCE`` both treat it as missing --
+          so only non-null keys count.  That same fact is why the read path has to
+          ask for one exact key instead of testing the column as a whole.
         """
         self.env.flush_all()
         self.env.cr.execute(

@@ -29,8 +29,12 @@ MODULE = os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(__file
 MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_DIR = os.path.dirname(MODULE_DIR)
 
+# No ``migrations`` on this branch: the only script the product line carries is
+# ``19.0.1.1.0`` (the 6h -> 1h cron correction), and it belongs to the 19.0
+# series alone.  Keeping the folder out of the allow-list is the guard that a
+# 19-only path does not sneak into a 20.0 package.
 SHIPPABLE_DIRS = frozenset({
-    'controllers', 'data', 'migrations', 'models', 'security', 'static', 'tests', 'views',
+    'controllers', 'data', 'models', 'security', 'static', 'tests', 'views',
 })
 SHIPPABLE_FILES = frozenset({
     '__init__.py', '__manifest__.py', 'LICENSE', 'README.md', 'hooks.py',
@@ -208,13 +212,15 @@ class TestPackaging(TransactionCase):
     def test_the_manifest_rst_description_parses_cleanly(self):
         """The manifest ``description`` is reStructuredText, and Odoo does render it.
 
-        ``ir_module_module._compute_description_html``
-        (``odoo19/odoo/addons/base/models/ir_module.py:188-209``) takes the
+        ``ir.module.module._get_desc``
+        (``odoo20/odoo/addons/base/models/ir_module.py:181-215``) takes the
         ``static/description/index.html`` when present and otherwise pipes this
         string through docutils with these same overrides -- which is the path the
         two companions ran on before W8 added their listings, and the path they
-        fall back to the moment one is dropped.  A parse error there is a visible
-        product defect, so keep the prose clean rather than unpinned.
+        fall back to the moment one is dropped.  A parse error there is logged and
+        the prose is shown as a raw ``<pre>`` block (``:211-213``), so a broken
+        listing is a visible product defect: keep the prose clean rather than
+        unpinned.
         """
         import io
 

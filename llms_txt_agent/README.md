@@ -1,7 +1,7 @@
-# LLMs.txt Agent: Website Pages AI SEO for Odoo 19
+# LLMs.txt Agent: Website Pages AI SEO for Odoo 20
 
 [![License: OPL-1](https://img.shields.io/badge/License-OPL--1-blue.svg)](LICENSE)
-[![Odoo Version](https://img.shields.io/badge/Odoo-19.0-purple.svg)](https://www.odoo.com)
+[![Odoo Version](https://img.shields.io/badge/Odoo-20.0-purple.svg)](https://www.odoo.com)
 [![Developer](https://img.shields.io/badge/Developed%20By-Asad%20Ali%20%40%20Softosmith-orange.svg)](https://softosmith.com)
 
 Developed by **Asad Ali** at **[Softosmith.com](https://softosmith.com)**.
@@ -34,6 +34,8 @@ Running an online store or blog? Our companion standalone apps (**LLMs.txt Agent
    - Verify **Include Published Website Pages** is checked.
    - Choose your **Generation & Cache Mode** (*Cached (Hourly Rebuild)*, *Cached (Daily Rebuild)*, or *Real-time / Dynamic*).
    - Click **Rebuild Cache Now** or use the **Preview /llms.txt** and **Preview /llms-full.txt** buttons to inspect your live output.
+
+> **Odoo 20 ships its own `LLMs.txt` box** in this same settings section, for writing the file by hand. Enabling **Enable llms.txt Generation** takes the `/llms.txt` URL from it and builds the document from your published pages instead; switching this app off hands the URL straight back, so text you already typed there keeps being served. `/llms-full.txt`, `/llms.md` and the per-page `.md` files belong to this app and return `404` while it is off.
 
 ### Upgrading an existing self-hosted installation
 

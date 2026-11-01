@@ -22,7 +22,6 @@ import html
 import os
 import re
 
-import odoo.http as odoo_http
 from odoo.tests.common import TransactionCase, tagged
 
 MODULE = os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -143,13 +142,21 @@ class TestListingClaims(TransactionCase):
         return ABSOLUTE_HOST.sub('', html.unescape('\n'.join(pieces)))
 
     def _registered_routes(self):
-        """Routes this module's own controllers register, canonicalised."""
+        """Routes this module's own controllers register, canonicalised.
+
+        ``odoo.http._generate_routing_rules`` is not importable on this branch --
+        the helper moved to ``odoo20/odoo/http/routing_map.py:230`` and the only
+        supported entry point is the ``ir.http`` wrapper at
+        ``odoo20/odoo/addons/base/models/ir_http.py:512-514`` (which is what
+        builds the real routing map, so a rule the server cannot see can never
+        pass here).
+        """
         mods = sorted({MODULE} | set(
             ast.literal_eval(open(os.path.join(MODULE_DIR, '__manifest__.py'),
                                   encoding='utf-8').read().strip())['depends']))
         converters = self.env['ir.http']._get_converters()
         return {_canonical(url)
-                for url, _endpoint in odoo_http._generate_routing_rules(mods, False, converters)
+                for url, _endpoint in self.env['ir.http']._generate_routing_rules(mods, converters)
                 if url.startswith('/llms') or url == MIRROR_ROUTE_RULE}
 
     def _advertised_routes(self):

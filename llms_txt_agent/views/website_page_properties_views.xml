@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- QA-12.  This is the screen an Odoo 19 website editor actually opens for
+    <!-- QA-12.  This is the screen an Odoo 20 website editor actually opens for
          page settings: the frontend "Page Properties" dialog, which is built on
          the transient model website.page.properties and whose view is fetched by
          reference (`form_view_ref=website.website_page_properties_view_form`,
-         see odoo19/addons/website/static/src/components/dialog/page_properties.js:236).
+         see odoo20/addons/website/static/src/components/dialog/page_properties.js:263-265).
          Core's own controls - Indexed, Published, Visibility, Is a Template -
-         are all related fields written through here, so extending it is the
-         documented way in, and it is the only place the advertised "single
+         are all related fields written through here
+         (odoo20/addons/website/views/website_pages_views.xml:63-106), so extending
+         it is the documented way in, and it is the only place the advertised "single
          checkbox" was ever missing. -->
     <record id="website_page_properties_view_form_inherit_llm" model="ir.ui.view">
         <field name="name">website.page.properties.form.inherit.llm</field>
