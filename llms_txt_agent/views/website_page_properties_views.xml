@@ -23,7 +23,7 @@
                        options="{'autosave': False}"
                        help="Omit this page from /llms.txt, /llms-full.txt and the per-page Markdown endpoints."/>
                 <field name="llm_custom_description"
-                       placeholder="Custom markdown description for AI search models (ChatGPT, Claude, Perplexity, Gemini). Leave blank to auto-generate from page content."/>
+                       placeholder="Optional Markdown for AI readers. In llms.txt, Odoo's SEO description is used first and this is the fallback."/>
             </xpath>
         </field>
     </record>

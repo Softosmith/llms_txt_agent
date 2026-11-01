@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
 from datetime import timedelta
+import json
 
 from odoo import api, fields, models
 from .html_to_md import html_to_markdown
@@ -28,7 +29,8 @@ LLM_CONTENT_FIELDS = frozenset({
 # write would wipe what it just stored, so every crawler request would regenerate
 # from scratch, which would leave the cached mode with nothing to cache.
 LLM_CACHE_FIELDS = frozenset({
-    'llm_txt_cache', 'llm_full_txt_cache', 'llm_cache_last_updated',
+    'llm_txt_cache', 'llm_full_txt_cache', 'llm_page_cache',
+    'llm_cache_last_updated',
 })
 
 # Last language to try when nothing else resolves.  A crawler can ask for any
@@ -81,6 +83,11 @@ class Website(models.Model):
     )
     llm_full_txt_cache = fields.Text(
         string="Cached llms-full.txt Content",
+        translate=True,
+        readonly=True,
+    )
+    llm_page_cache = fields.Text(
+        string="Cached Page Markdown",
         translate=True,
         readonly=True,
     )
@@ -139,18 +146,16 @@ class Website(models.Model):
             ('visibility', 'in', ('', False)),
         ]
 
-    def _get_llm_exportable_page(self, page_id):
-        """Return the page as a recordset only if this website may export it.
-
-        Single source of truth for ``/llms/page/<id>.md``: the route and the two
-        index hooks cannot drift apart, which is what made the shipped guard
-        incomplete rather than merely wrong.
-        """
+    def _get_llm_exportable_page(self, page_id=None, page_url=None):
+        """Return one page only when this website may export it as Markdown."""
         self.ensure_one()
         if not self.llm_include_pages:
             return self.env['website.page']
+        identity = [('id', '=', int(page_id))] if page_id is not None else [
+            ('url', '=', page_url)]
         return self.env['website.page'].sudo().search(
-            [('id', '=', int(page_id))] + self._get_llm_page_domain(), limit=1)
+            identity + self._get_llm_page_domain(),
+            order='website_id desc, id desc', limit=1)
 
     def _get_llms_txt_sections(self, base_url):
         """Hook method to collect sections for llms.txt. Extensible by other modules via super().
@@ -171,12 +176,10 @@ class Website(models.Model):
                     continue
                 seen_urls.add(p.url)
                 p_title = p.name or p.url or 'Website Page'
-                p_url = f"{base_url}{p.url}"
-                if p.llm_custom_description:
-                    summary = p.llm_custom_description.strip().split('\n')[0][:150]
-                else:
-                    summary = f"Website page ({p.url})"
-                page_links.append(f"- [{p_title}]({p_url}): {summary}")
+                markdown_url = f"{base_url}{p.get_llm_markdown_path()}"
+                summary = p.get_llm_summary(base_url=base_url)
+                description = f": {summary}" if summary else ''
+                page_links.append(f"- [{p_title}]({markdown_url}){description}")
 
             if page_links:
                 sections.append("## Website Pages\n\n" + '\n'.join(page_links))
@@ -324,8 +327,45 @@ class Website(models.Model):
         })
         return content
 
+    def _generate_llm_page_cache(self):
+        """Build the Markdown document map for every exportable website page."""
+        self.ensure_one()
+        if not self.llm_include_pages or 'website.page' not in self.env:
+            return '{}'
+
+        base_url = self.get_base_url()
+        pages = self.env['website.page'].sudo().search(self._get_llm_page_domain())
+        sorted_pages = sorted(
+            pages, key=lambda page: (0 if page.website_id else 1, page.url or ''))
+        documents = {}
+        seen_urls = set()
+        for page in sorted_pages:
+            if not page.url or page.url in ('/404', '/500') or page.url in seen_urls:
+                continue
+            seen_urls.add(page.url)
+            documents[page.url] = page.get_llm_markdown(base_url=base_url)
+        return json.dumps(documents, ensure_ascii=False)
+
+    def get_llm_page_content(self, page):
+        """Return one page's cached Markdown, generating the cache when empty."""
+        self.ensure_one()
+        page.ensure_one()
+        website = self.with_context(lang=self._llms_lang_code())
+        page = page.with_context(lang=website.env.context['lang'])
+        if website.llm_cache_ttl == 'realtime':
+            return page.get_llm_markdown(base_url=website.get_base_url())
+
+        cached = website._llms_cache_read('llm_page_cache')
+        if not cached:
+            cached = website._generate_llm_page_cache()
+            website.sudo().write({
+                'llm_page_cache': cached,
+                'llm_cache_last_updated': fields.Datetime.now(),
+            })
+        return json.loads(cached).get(page.url)
+
     def action_rebuild_llms_cache(self):
-        """Manual admin action button to rebuild llms.txt & llms-full.txt cache.
+        """Rebuild the indexes and every page Markdown document immediately.
 
         Every language gets its own pass (QA-11): a rebuild that only wrote the
         language of the admin who pressed the button left each crawler-facing
@@ -338,6 +378,7 @@ class Website(models.Model):
                 lang_website.write({
                     'llm_txt_cache': lang_website._generate_llms_txt(),
                     'llm_full_txt_cache': lang_website._generate_llms_full_txt(),
+                    'llm_page_cache': lang_website._generate_llm_page_cache(),
                 })
             website.sudo().write({'llm_cache_last_updated': fields.Datetime.now()})
         return {
@@ -345,7 +386,7 @@ class Website(models.Model):
             'tag': 'display_notification',
             'params': {
                 'title': 'llms.txt Cache Rebuilt',
-                'message': 'Successfully regenerated llms.txt and llms-full.txt cache for the current website.',
+                'message': 'Successfully regenerated llms.txt, llms-full.txt, and all page Markdown for the current website.',
                 'sticky': False,
                 'type': 'success',
                 # QA-40 / FINDINGS D-J.  The toast proved the rebuild happened
@@ -484,5 +525,6 @@ class Website(models.Model):
             sudo_websites.with_context(lang=code).write({
                 'llm_txt_cache': False,
                 'llm_full_txt_cache': False,
+                'llm_page_cache': False,
             })
         sudo_websites.write({'llm_cache_last_updated': False})

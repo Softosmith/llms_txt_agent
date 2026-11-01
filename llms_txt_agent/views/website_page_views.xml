@@ -8,7 +8,7 @@
             <xpath expr="//sheet/group" position="after">
                 <group string="AI Search Optimization (GEO / llms.txt)" name="ai_geo_settings">
                     <field name="llm_exclude"/>
-                    <field name="llm_custom_description" placeholder="Custom markdown description for AI search models (ChatGPT, Claude, Perplexity, Gemini). Leave blank to auto-generate from page content."/>
+                    <field name="llm_custom_description" placeholder="Optional Markdown for AI readers. In llms.txt, Odoo's SEO description is used first and this is the fallback."/>
                 </group>
             </xpath>
         </field>

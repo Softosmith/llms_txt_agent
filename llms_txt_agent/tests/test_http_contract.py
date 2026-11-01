@@ -48,6 +48,13 @@ CACHE_CONTROL = {
 }
 INDEX_PATHS = ('/llms.txt', '/llms-full.txt', '/llms.md')
 
+# The rule *patterns* of the two per-page routes, exactly as the registry holds
+# them: one addressable by the page's own URL (``/about.md``) and the legacy
+# id-based one (``/llms/page/7.md``).  ``test_listing_claims.py`` and the
+# routing-key checks below both work on patterns, because the shape of a route
+# is a definition-site fact while a concrete URL is only one instance of it.
+ITEM_RULES = ('/<path:page_path>.md', '/llms/page/<int:page_id>.md')
+
 
 @tagged('post_install', '-at_install')
 class TestLlmsHttpContract(HttpCase):
@@ -79,7 +86,10 @@ class TestLlmsHttpContract(HttpCase):
             'name': 'Contract Test Page',
         })
         cls.item_path = '/llms/page/%d.md' % cls.page.id
-        cls.all_paths = INDEX_PATHS + (cls.item_path,)
+        # The mirrored route resolves a page by its own URL, so the test page's
+        # URL is the test URL: ``/contract-test-page.md`` -> ``/contract-test-page``.
+        cls.mirror_path = '%s.md' % cls.page.url
+        cls.all_paths = INDEX_PATHS + (cls.item_path, cls.mirror_path)
 
     def setUp(self):
         super().setUp()
@@ -151,51 +161,69 @@ class TestLlmsHttpContract(HttpCase):
             # must parse as an HTTP-date, i.e. GMT with no numeric offset
             self.assertIn('GMT', last_modified)
 
-    def test_item_route_last_modified_follows_the_page(self):
-        """The item route is not in the website cache, so its validator has to come
-        from the record itself.
+    def test_item_route_last_modified_follows_the_cache_rebuild(self):
+        """QA-25, re-cut for the page cache: each mode's validator comes from the
+        thing that actually decided the bytes being served.
 
-        Hardened twice, and the second hardening is an ORM fact worth recording:
+        The per-page routes used to build the Markdown on the spot, so the record's
+        own ``write_date`` was an honest answer.  They now serve ``llm_page_cache``
+        (and warm it when it is empty), which makes the website's rebuild stamp the
+        truthful one -- and it is not merely prettier: an editor save in the Website
+        ``<editor>`` writes the arch on ``ir.ui.view``, not on ``website.page`` (that
+        is why ``models/ir_ui_view.py`` exists), so a page body can be newer than its
+        own ``write_date``.  A cached route advertising the older of the two would
+        answer ``If-Modified-Since`` with a 304 and hand back stale Markdown.
+
+        Two branches, because there are two modes to be right about: a cached
+        website is as fresh as its last rebuild, a real-time one re-generates on
+        every request and therefore has no rebuild stamp to point at, so it falls
+        back to the record.
+
+        Hardened with the ORM fact the first draft learned the hard way:
         ``write_date`` comes from ``cr.now()`` (``odoo/orm/models.py:4396``) and
         PostgreSQL fixes the transaction timestamp at the first statement, so every
-        ORM write inside one ``TransactionCase`` gets the *same* ``write_date`` -- no
-        header can be shown to "move" by writing through the ORM here, in this class
-        or any other.  The first draft compared two headers after a rename and failed
-        on that, not on the contract.  So the record stamp is moved below with a SQL
-        UPDATE, which is exactly what a second crawler request sees in production
-        after a write committed in an earlier transaction.
-
-        The website cache timestamp is pushed three hours away first, so "the header
-        is the record's own stamp, not the cache's" cannot pass by coincidence.
+        ORM write inside one ``TransactionCase`` gets the *same* ``write_date``.  The
+        record stamp is therefore moved with a SQL UPDATE, which is what a second
+        crawler request sees in production after a write committed in an earlier
+        transaction.
         """
-        first = self.url_open(self.item_path)
-        self.assertEqual(
-            first.headers['Last-Modified'], _http_utc(self.page.write_date),
-            'the header is not the record timestamp (QA-25)')
+        stamp_pushed_back = fields.Datetime.now() - timedelta(hours=2)
+        self.env.cr.execute(
+            "UPDATE website_page SET write_date = %s WHERE id = %s",
+            (fields.Datetime.to_string(stamp_pushed_back), self.page.id))
+        self.env.invalidate_all()
 
-        cache_stamp = fields.Datetime.now() + timedelta(hours=3)
-        self.website.sudo().write({'llm_cache_last_updated': cache_stamp})
+        cached = self.url_open(self.item_path)
+        self.assertEqual(cached.status_code, 200)
+        self.env.invalidate_all()
+        rebuild = self.website.llm_cache_last_updated
+        self.assertTrue(
+            rebuild, 'the per-page route did not warm the cache it reads from')
+        self.assertEqual(
+            cached.headers['Last-Modified'], _http_utc(rebuild),
+            'the header is not the rebuild stamp of the cached document (QA-25)')
         self.assertNotEqual(
-            first.headers['Last-Modified'], _http_utc(cache_stamp),
-            'the item route took Last-Modified from the website cache (QA-25)')
+            cached.headers['Last-Modified'], _http_utc(self.page.write_date),
+            'a cached page still promised the older of the two dates (QA-25)')
 
         self.page.name = 'Contract Test Page Renamed'
         self.env.invalidate_all()
-        second = self.url_open(self.item_path)
-        self.assertNotEqual(first.headers['ETag'], second.headers['ETag'],
+        renamed = self.url_open(self.item_path)
+        self.assertNotEqual(cached.headers['ETag'], renamed.headers['ETag'],
                             'the validator did not follow the body (QA-25)')
 
-        self.env.cr.execute(
-            "UPDATE website_page SET write_date = (now() at time zone 'UTC')"
-            " - interval '2 hours' WHERE id = %s", (self.page.id,))
+        # Real-time re-generates every request, so nothing is cached to be fresher
+        # than the record -- which is exactly where the old assertion still holds.
+        self._set_ttl('realtime')
+        dynamic = self.url_open(self.item_path)
+        self.assertEqual(dynamic.status_code, 200)
         self.env.invalidate_all()
-        third = self.url_open(self.item_path)
-        self.assertNotEqual(
-            second.headers['Last-Modified'], third.headers['Last-Modified'],
-            'the header did not follow the record (QA-25)')
+        self.assertFalse(
+            self.website.llm_cache_last_updated,
+            'real-time mode wrote a cache it promises not to use')
         self.assertEqual(
-            third.headers['Last-Modified'], _http_utc(self.page.write_date),
-            'the header is no longer the record timestamp (QA-25)')
+            dynamic.headers['Last-Modified'], _http_utc(self.page.write_date),
+            'an uncached document is not validated by its own record stamp (QA-25)')
 
     # -- QA-25: conditional GET -----------------------------------------
 
@@ -514,18 +542,48 @@ class TestLlmsRouteRules(TransactionCase):
             self.assertTrue(website)
             self.assertTrue(sitemap is False, '%s must stay out of the sitemap' % path)
 
-    def test_item_routes_are_read_only_and_single_language(self):
-        """The item routes never write, so they may use a read-only cursor."""
-        endpoints = self._rules_for('/llms/page/<int:page_id>.md')
-        self.assertTrue(endpoints, 'the page item route is not registered')
-        shapes = {
-            (e.routing.get('multilang'), e.routing.get('readonly'))
-            for e in endpoints
-        }
-        self.assertEqual(len(shapes), 1, 'the item route rules disagree: %r' % (shapes,))
-        multilang, readonly = shapes.pop()
-        self.assertFalse(multilang)
-        self.assertTrue(readonly, 'the item route writes nothing and must be readonly=True')
+    def test_item_routes_are_single_language_and_not_read_only(self):
+        """Both per-page routes fill the page cache, so neither may run on a
+        read-only cursor -- and both must refuse the ``/fr/`` language prefix.
+
+        The pair used to be ``readonly=True`` because each request re-generated the
+        Markdown on the spot.  They now serve ``llm_page_cache`` and warm it when it
+        is empty (``get_llm_page_content``), which is a *write*: on a read-only
+        transaction PostgreSQL aborts with ``cannot execute UPDATE in a read-only
+        transaction``, so the first crawler hit after an invalidation would have
+        turned into a 500.  Pinning the flag here is what keeps a future "it's only
+        a GET, put readonly back" change from being a production outage.
+
+        ``multilang=False`` stays asserted for the same reason as the index routes:
+        the language is negotiated per request (QA-11), so a URL prefix would be a
+        third copy of one document.  The mirrored route is checked as a rule
+        *pattern* rather than as ``/contract-test-page.md`` because the attributes
+        belong to the definition, and this class has no page-per-website fixture to
+        build URLs from.
+        """
+        for pattern in ITEM_RULES:
+            endpoints = self._rules_for(pattern)
+            self.assertTrue(endpoints, '%s is not registered' % pattern)
+            shapes = {
+                (e.routing.get('multilang'), e.routing.get('readonly'),
+                 e.routing.get('auth'), e.routing.get('type'),
+                 e.routing.get('website'), e.routing.get('sitemap'))
+                for e in endpoints
+            }
+            self.assertEqual(
+                len(shapes), 1,
+                '%s is routed %d times with %d different attribute sets: %r (QA-32)'
+                % (pattern, len(endpoints), len(shapes), shapes))
+            multilang, readonly, auth, rtype, website, sitemap = shapes.pop()
+            self.assertFalse(multilang, '%s must be multilang=False' % pattern)
+            self.assertFalse(
+                readonly,
+                '%s warms llm_page_cache, so a read-only cursor cannot serve it'
+                % pattern)
+            self.assertEqual(auth, 'public', '%s must be reachable by a crawler' % pattern)
+            self.assertEqual(rtype, 'http')
+            self.assertTrue(website)
+            self.assertTrue(sitemap is False, '%s must stay out of the sitemap' % pattern)
 
     def test_llms_routes_opt_out_of_the_session_cookie(self):
         """QA-36 at the routing layer: the key that keeps a crawler hit stateless.
@@ -534,7 +592,7 @@ class TestLlmsRouteRules(TransactionCase):
         from this dict -- ``pre_dispatch()`` reads ``save_session`` out of it
         (``odoo19/odoo/http.py:2423``) and nothing else can turn the cookie off.
         """
-        for path in INDEX_PATHS + ('/llms/page/<int:page_id>.md',):
+        for path in INDEX_PATHS + ITEM_RULES:
             endpoints = self._rules_for(path)
             self.assertTrue(endpoints, '%s is not routed' % path)
             for endpoint in endpoints:

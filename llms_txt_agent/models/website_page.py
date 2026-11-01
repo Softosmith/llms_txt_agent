@@ -2,8 +2,17 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 # Copyright (C) 2026 Asad Ali (https://softosmith.com)
 
+import re
+
 from odoo import api, fields, models
 from .html_to_md import html_to_markdown
+
+
+_MARKDOWN_LINK = re.compile(r'!?\[([^]]*)\]\([^)]+\)')
+_MARKDOWN_PREFIX = re.compile(r'^\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)')
+_MARKDOWN_MARKERS = re.compile(r'[*_~`]')
+_LEADING_H1 = re.compile(r'^#\s+(.+?)(?:\n\n|\Z)', re.DOTALL)
+_TITLE_NORMALIZE = re.compile(r'[^\w]+', re.UNICODE)
 
 
 # Page fields whose value reaches the generated documents (QA-38).  A write that
@@ -31,8 +40,44 @@ class WebsitePage(models.Model):
     llm_custom_description = fields.Text(
         string="Custom AI Description (Markdown)",
         translate=True,
-        help="Custom summary or AI prompt description for this page. If left blank, automatically generated from page body."
+        help="Optional Markdown written for AI readers. The standard Odoo SEO description is used first in llms.txt; this field is its fallback."
     )
+
+    def get_llm_markdown_path(self):
+        """Return the public Markdown path that mirrors this page's URL."""
+        self.ensure_one()
+        path = (self.sudo().url or '').strip('/')
+        return '/%s.md' % (path or 'home')
+
+    def get_llm_summary(self, base_url='', limit=180):
+        """Return the configured page description for its llms.txt link."""
+        self.ensure_one()
+        page = self.sudo()
+        source = page.website_meta_description or page.llm_custom_description
+        if not source:
+            return ''
+
+        for line in source.strip().splitlines():
+            summary = line.strip()
+            if not summary or summary in ('---', '```'):
+                continue
+            summary = _MARKDOWN_PREFIX.sub('', summary)
+            summary = _MARKDOWN_LINK.sub(r'\1', summary)
+            summary = _MARKDOWN_MARKERS.sub('', summary)
+            summary = ' '.join(summary.split())
+            if summary:
+                return summary[:limit].rstrip()
+        return ''
+
+    @staticmethod
+    def _without_duplicate_title(body, title):
+        match = _LEADING_H1.match(body or '')
+        if not match:
+            return body
+        normalize = lambda value: _TITLE_NORMALIZE.sub('', value).casefold()
+        if normalize(match.group(1)) != normalize(title):
+            return body
+        return body[match.end():].lstrip()
 
     def get_llm_markdown(self, base_url=''):
         """Generate markdown document representation of this page.
@@ -48,7 +93,7 @@ class WebsitePage(models.Model):
         title = page.name or page.url or 'Untitled Page'
         page_url = f"{base_url.rstrip('/')}{page.url}" if page.url else base_url
 
-        lines = [f"# {title}", f"URL: {page_url}"]
+        blocks = [f"# {title}", f"URL: {page_url}"]
 
         # QA-09 / FINDINGS D-E2: this used to append "Robots: noindex" for a page
         # with ``website_indexed = False``.  Prose inside the document is not a
@@ -58,18 +103,17 @@ class WebsitePage(models.Model):
         # "Indexed = No".  Such pages are now excluded from every export by
         # ``website._get_llm_page_domain()``, which makes the line dead code.
 
-        lines.append("")
-
+        body_md = ''
         if page.llm_custom_description:
-            lines.append(page.llm_custom_description.strip())
+            body_md = page.llm_custom_description.strip()
         else:
-            arch_content = page.arch_base or (hasattr(page, 'arch') and page.arch)
+            arch_content = page.arch or page.arch_base
             if arch_content:
                 body_md = html_to_markdown(arch_content, base_url=base_url)
-                if body_md:
-                    lines.append(body_md)
+                body_md = self._without_duplicate_title(body_md, title)
 
-        return '\n\n'.join(lines)
+        blocks.append(body_md or "Article titled '%s'." % title)
+        return '\n\n'.join(blocks)
 
     @api.model_create_multi
     def create(self, vals_list):

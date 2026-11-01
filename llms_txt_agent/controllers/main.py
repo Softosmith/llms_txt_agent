@@ -93,7 +93,34 @@ class WebsiteLlmController(http.Controller):
 
     # -- per-record documents ---------------------------------------------
 
-    @http.route('/llms/page/<int:page_id>.md', type='http', auth='public', website=True, multilang=False, sitemap=False, readonly=True, save_session=False)
+    @http.route('/<path:page_path>.md', type='http', auth='public', website=True, multilang=False, sitemap=False, save_session=False)
+    def website_page_markdown(self, page_path, **kwargs):
+        """Serve a real Markdown URL that mirrors the public website page URL."""
+        website = request.website
+        if not website or not website.llm_enabled:
+            return request.not_found()
+
+        lang = website._llms_lang_code()
+        # ``/home.md`` names the homepage, and Odoo's homepage URL is a setting, not
+        # the constant ``/``: core resolves it the same way, as
+        # ``website.homepage_url or '/'`` (``odoo19/addons/website/models/website_page.py:61``).
+        # Hardcoding ``/`` meant that on a site whose homepage is ``/welcome`` the
+        # alias looked for a page at ``/`` -- and 404'd, or served some other
+        # record that happened to own that URL.
+        page_url = ((website.homepage_url or '/') if page_path == 'home'
+                    else '/%s' % page_path.strip('/'))
+        page = website._get_llm_exportable_page(page_url=page_url)
+        if not page:
+            return request.not_found()
+
+        content = website.with_context(lang=lang).get_llm_page_content(page)
+        if content is None:
+            return request.not_found()
+        return self._llms_response(
+            website, content, 'text/markdown; charset=utf-8', lang,
+            last_modified=website.llm_cache_last_updated or page.write_date)
+
+    @http.route('/llms/page/<int:page_id>.md', type='http', auth='public', website=True, multilang=False, sitemap=False, save_session=False)
     def llms_page_markdown(self, page_id, **kwargs):
         """Serves individual website page content as Markdown.
 
@@ -109,9 +136,8 @@ class WebsiteLlmController(http.Controller):
 
         QA-25: this route used to send no caching header and no robots directive at
         all, and had no validator, so an AI crawler that polled the same page every
-        hour re-downloaded the whole body each time.  ``Last-Modified`` comes from
-        the record, not from the website cache timestamp: the page is not part of
-        that cache.
+        hour re-downloaded the whole body each time. Individual page Markdown is
+        now rebuilt with the website cache and uses that rebuild timestamp.
         """
         website = request.website
         if not website or not website.llm_enabled:
@@ -122,8 +148,9 @@ class WebsiteLlmController(http.Controller):
         if not page:
             return request.not_found()
 
-        base_url = website.get_base_url()
-        content = page.with_context(lang=lang).get_llm_markdown(base_url=base_url)
+        content = website.with_context(lang=lang).get_llm_page_content(page)
+        if content is None:
+            return request.not_found()
         return self._llms_response(
             website, content, 'text/markdown; charset=utf-8', lang,
-            last_modified=page.write_date)
+            last_modified=website.llm_cache_last_updated or page.write_date)

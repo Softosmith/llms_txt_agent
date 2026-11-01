@@ -97,7 +97,34 @@ class TestLlmsTxtAgent(TransactionCase):
         self.assertIn('- Item 2', md)
         self.assertIn('[Click Here](https://example.com/relative-link)', md)
         self.assertNotIn('alert', md)
-        self.assertNotIn('Menu', md)
+        self.assertIn('[Menu](https://example.com/menu)', md)
+
+    def test_page_markdown_has_exact_spacing_and_no_duplicate_title(self):
+        self.view_home.arch = (
+            '<t t-name="test.home"><div><h1>Test Home Page</h1>'
+            '<p>Our main website content.</p></div></t>')
+
+        content = self.page_home.get_llm_markdown(base_url='https://mytestsite.com')
+
+        self.assertEqual(
+            content,
+            '# Test Home Page\n\nURL: https://mytestsite.com/test-home\n\n'
+            'Our main website content.')
+
+    def test_page_markdown_keeps_a_different_body_heading(self):
+        content = self.page_home.get_llm_markdown(base_url='https://mytestsite.com')
+
+        self.assertIn('\n\n# Welcome Home\n\nOur main website content.', content)
+
+    def test_page_markdown_uses_a_fallback_for_an_empty_body(self):
+        self.view_home.arch = '<t t-name="test.home"><script>hidden()</script></t>'
+
+        content = self.page_home.get_llm_markdown(base_url='https://mytestsite.com')
+
+        self.assertEqual(
+            content,
+            "# Test Home Page\n\nURL: https://mytestsite.com/test-home\n\n"
+            "Article titled 'Test Home Page'.")
 
     def test_llms_txt_generation(self):
         """Test standard /llms.txt output generation."""
@@ -106,10 +133,47 @@ class TestLlmsTxtAgent(TransactionCase):
         self.assertIn('> Leading provider of innovative AI solutions.', content)
         self.assertIn('Focus on providing concise and direct answers.', content)
         self.assertIn('## Website Pages', content)
-        self.assertIn('https://mytestsite.com/test-home', content)
-        self.assertIn('https://mytestsite.com/test-about', content)
+        self.assertIn('- [Test Home Page](https://mytestsite.com/test-home.md)', content)
+        self.assertIn('https://mytestsite.com/test-about.md', content)
+        self.assertNotIn('Our main website content.', content)
         self.assertIn('Detailed history and team profile', content)
         self.assertIn('## Full Context Export', content)
+
+    def test_llms_txt_uses_the_page_seo_description(self):
+        self.page_home.website_meta_description = \
+            'SEO description entered before publishing the page.'
+
+        content = self.website._generate_llms_txt()
+
+        self.assertIn(
+            '- [Test Home Page](https://mytestsite.com/test-home.md): '
+            'SEO description entered before publishing the page.', content)
+        self.assertNotIn('Our main website content.', content)
+
+    def test_llms_txt_prefers_seo_description_over_custom_ai_description(self):
+        self.page_about.website_meta_description = 'Standard Odoo SEO description.'
+
+        content = self.website._generate_llms_txt()
+
+        self.assertIn('Standard Odoo SEO description.', content)
+        self.assertNotIn('Detailed history and team profile', content)
+
+    def test_llms_txt_never_extracts_a_description_from_page_content(self):
+        self.page_home.website_meta_description = False
+        self.page_home.llm_custom_description = False
+
+        content = self.website._generate_llms_txt()
+
+        self.assertIn('- [Test Home Page](https://mytestsite.com/test-home.md)', content)
+        self.assertNotIn('Our main website content.', content)
+
+    def test_rebuild_cache_includes_individual_page_markdown(self):
+        self.website.action_rebuild_llms_cache()
+
+        cached_pages = self.website._llms_cache_read('llm_page_cache')
+        self.assertIn('"/test-home"', cached_pages)
+        self.assertIn('# Test Home Page', cached_pages)
+        self.assertIn('Our main website content.', cached_pages)
 
     def test_llms_full_txt_generation(self):
         """Test full markdown export /llms-full.txt generation."""

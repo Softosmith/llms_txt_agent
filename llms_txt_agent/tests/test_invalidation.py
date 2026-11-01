@@ -77,14 +77,17 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
             website._invalidate_llms_cache()
             website.get_llms_txt_content()
             website.get_llms_full_txt_content()
+            website.sudo().write({'llm_page_cache': website._generate_llm_page_cache()})
 
     def _assert_cached(self, website, msg):
         self.assertTrue(website.llm_txt_cache, f'{msg}: llm_txt_cache should still be there')
         self.assertTrue(website.llm_full_txt_cache, f'{msg}: llm_full_txt_cache should still be there')
+        self.assertTrue(website.llm_page_cache, f'{msg}: llm_page_cache should still be there')
 
     def _assert_cleared(self, website, msg):
         self.assertFalse(website.llm_txt_cache, f'{msg}: llm_txt_cache must be empty')
         self.assertFalse(website.llm_full_txt_cache, f'{msg}: llm_full_txt_cache must be empty')
+        self.assertFalse(website.llm_page_cache, f'{msg}: llm_page_cache must be empty')
 
     # QA-10 --------------------------------------------------------------
     def test_settings_write_invalidates_cache(self):

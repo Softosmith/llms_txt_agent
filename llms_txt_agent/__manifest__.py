@@ -4,7 +4,7 @@
 
 {
     'name': 'LLMs.txt Agent: Website Pages AI SEO (GEO/AEO for ChatGPT, Gemini, Perplexity)',
-    'version': '19.0.1.1.0',
+    'version': '19.0.1.2.0',
     'category': 'Website/Website',
     'summary': 'Publish your website pages as AI SEO / GEO / AEO llms.txt & Markdown that ChatGPT, Gemini and Perplexity can read.',
     'description': """
@@ -45,12 +45,21 @@ Key Features:
 * **Automated /llms.txt & /llms-full.txt Endpoints**: Dynamically generates and serves
   both files adhering to the official `llms.txt` standard specification, so AI tools
   such as ChatGPT, Gemini, Perplexity, Claude, Grok, and Copilot can discover your site.
+  `/llms.md` serves the same index with Markdown headers, for the tooling that probes it.
+* **Per-Page Markdown Endpoints**: Every published page also gets a Markdown document at
+  its own URL with `.md` appended — `/<page-url>.md`, so `/about.md` for a page published
+  at `/about`, and `/home.md` for the homepage — alongside the older id-based
+  `/llms/page/<id>.md`, which stays supported.
 * **Automatic Sync**: Content stays fresh — the cache rebuilds automatically on a
   schedule (hourly, daily, or real-time) or instantly whenever website pages are
   created, published, or edited.
 * **Smart HTML-to-Markdown Parser**: Converts Odoo Website HTML pages and landing
   pages into clean GitHub-Flavored Markdown that AI models parse and extract
-  exact answers from instead of guessing.
+  exact answers from instead of guessing. Anything a visitor can see is kept,
+  including the page's own header, navigation and footer; only content hidden from
+  visitors (editor-only blocks, scripts, invisible form fields) is dropped, and a
+  table with merged cells is kept as sanitized HTML rather than flattened into
+  something that reads wrong.
 * **Caching**: Cached modes answer a crawler from the pre-built document instead of
   regenerating the whole export on every request, and the rebuild schedule follows the
   mode you picked.

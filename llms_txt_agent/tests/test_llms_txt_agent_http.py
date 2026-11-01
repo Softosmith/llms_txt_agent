@@ -79,16 +79,73 @@ class TestLlmsTxtAgentHttp(HttpCase):
                 f'{path} must carry a Cache-Control header')
 
     def test_item_route_status_and_headers(self):
-        r = self.url_open(f'/llms/page/{self.page.id}.md')
+        for path in (f'/llms/page/{self.page.id}.md', '/http-test-page.md'):
+            r = self.url_open(path)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.headers.get('Content-Type'), 'text/markdown; charset=utf-8')
+            self.assertIn('# HTTP Test Page', r.text)
+            self.assertIn('Body copy for the http test page.', r.text)
+        self.assertEqual(self.url_open('/md/http-test-page.md').status_code, 404)
+
+    def test_the_two_item_routes_serve_one_document(self):
+        """Same page, two URLs, one body -- and one ETag, or a crawler that
+        discovered the page under both names caches two copies of "the same"
+        document and can be answered from the stale one.
+
+        The mirrored route resolves by URL, the legacy route by id: two lookups that
+        can each be written wrongly, and a page whose Markdown differs between them
+        is a page whose guards differ too.  Equality of the served bytes is what
+        proves they describe one document rather than two near-copies.
+        """
+        by_url = self.url_open('/http-test-page.md')
+        by_id = self.url_open(f'/llms/page/{self.page.id}.md')
+        self.assertEqual(by_url.status_code, 200)
+        self.assertEqual(by_id.status_code, 200)
+        self.assertEqual(by_url.text, by_id.text)
+        self.assertEqual(by_url.headers['ETag'], by_id.headers['ETag'])
+        self.assertEqual(by_url.headers['Cache-Control'], by_id.headers['Cache-Control'])
+
+    def test_home_md_follows_the_configured_homepage_url(self):
+        """``/home.md`` is an alias for *the site's* homepage, and a homepage URL is
+        a setting (``website.homepage_url``) -- not the constant ``/``.
+
+        Odoo ships the rule in ``website.page._compute_is_homepage``
+        (``odoo19/addons/website/models/website_page.py:58-61``): a page is the
+        homepage when its url equals ``website.homepage_url or '/'``.  The alias has
+        to follow that expression or a site that moved its homepage to ``/welcome``
+        gets a 404 on the one URL its own index points a crawler to.
+        """
+        homepage = self.env['website.page'].create({
+            'url': '/welcome',
+            'view_id': self.env['ir.ui.view'].create({
+                'name': 'Custom Homepage View',
+                'type': 'qweb',
+                'arch': '<t t-name="test.custom.home"><div><h1>Welcome Home</h1>'
+                        '<p>The configured homepage.</p></div></t>',
+                'key': 'test.custom.home',
+            }).id,
+            'website_id': self.website.id,
+            'is_published': True,
+            'name': 'Welcome Home',
+        })
+        self.website.homepage_url = homepage.url
+        r = self.url_open('/home.md')
+        self.assertEqual(r.status_code, 200,
+                         '/home.md must resolve website.homepage_url, not /')
+        self.assertIn('# Welcome Home', r.text)
+        self.assertIn('The configured homepage.', r.text)
+
+    def test_llms_txt_links_to_the_real_markdown_page(self):
+        r = self.url_open('/llms.txt')
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.headers.get('Content-Type'), 'text/markdown; charset=utf-8')
-        self.assertIn('# HTTP Test Page', r.text)
-        self.assertIn('Body copy for the http test page.', r.text)
+        self.assertIn('/http-test-page.md', r.text)
+        self.assertNotIn('Body copy for the http test page.', r.text)
+        self.assertNotIn(f'/llms/page/{self.page.id}.md', r.text)
 
     def test_disabled_website_returns_404_on_every_route(self):
         self.website.llm_enabled = False
         for path in ('/llms.txt', '/llms-full.txt', '/llms.md',
-                     f'/llms/page/{self.page.id}.md'):
+                     f'/llms/page/{self.page.id}.md', '/http-test-page.md'):
             self.assertEqual(self.url_open(path).status_code, 404, path)
 
     # ------------------------------------------------------- guard matrix
@@ -114,6 +171,42 @@ class TestLlmsTxtAgentHttp(HttpCase):
         for bad in (0, -1, 99999999):
             self.assertEqual(self.url_open(f'/llms/page/{bad}.md').status_code, 404,
                              f'id {bad} must 404')
+
+    def test_mirrored_route_honours_every_page_guard(self):
+        """The URL-resolved route must refuse exactly what the id-resolved one
+        refuses.
+
+        QA-06/QA-09 moved the guards into one domain (``_get_llm_page_domain()``),
+        which is what lets the index and an item agree at all -- but the mirrored
+        route is a *second* identity clause on that domain (``url`` instead of
+        ``id``), so it is a second chance to skip one.  The password case is the one
+        that matters: the page is still published, still indexed, still not
+        excluded, and ``website.page`` is read through ``sudo()`` for a body the
+        owner locked.  Visibility is asserted last because the three boolean gates
+        above reset themselves and a cleared selection value is not portable across
+        Odoo series (17.0-19.0 store the public mode as ``''``/NULL, 20.0 renamed it
+        to ``'public'``).
+        """
+        for field, locked, label in (
+            ('is_published', False, 'unpublished'),
+            ('llm_exclude', True, 'llm_exclude'),
+            ('website_indexed', False, 'noindex'),
+        ):
+            self.page.write({field: locked})
+            self.assertEqual(
+                self.url_open('/http-test-page.md').status_code, 404,
+                '%s page must 404 on the mirrored route too' % label)
+            self.assertEqual(
+                self.url_open(f'/llms/page/{self.page.id}.md').status_code, 404,
+                '%s page 404s on one item route but not the other' % label)
+            self.page.write({field: not locked})
+
+        self.view.visibility = 'password'
+        self.view.visibility_password = 'hunter2'
+        locked = self.url_open('/http-test-page.md')
+        self.assertEqual(locked.status_code, 404,
+                         'a password-protected page must not leak through its URL')
+        self.assertNotIn('Body copy for the http test page.', locked.text)
 
     def test_noindex_pages_are_not_exported(self):
         """A page the owner marked "not indexed" must not be handed to AI
@@ -549,7 +642,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         was serving, and without ``Vary`` a shared cache is free to answer a
         French crawler with the cached English body."""
         for path in ('/llms.txt', '/llms-full.txt', '/llms.md',
-                     f'/llms/page/{self.page.id}.md'):
+                     f'/llms/page/{self.page.id}.md', '/http-test-page.md'):
             r = self.url_open(path)
             self.assertEqual(r.status_code, 200, path)
             self.assertEqual(r.headers.get('Content-Language'), 'en_US',

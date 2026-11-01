@@ -10,15 +10,19 @@ from odoo import models
 # and in ``/llms/page/<id>.md`` -- is stored here, not on the page record.
 ARCH_FIELDS = frozenset({'arch', 'arch_base', 'arch_db'})
 
-# The same delegation hides the page's *access rules* here: ``visibility``,
-# ``visible_boundary`` and ``group_ids`` are delegated fields, so locking a page
-# writes ``ir.ui.view`` and never reaches the ``website.page`` invalidation hook.
+# The same delegation hides the page's *access rules* here: ``visibility`` and
+# ``group_ids`` are delegated fields, so locking a page writes ``ir.ui.view`` and
+# never reaches the ``website.page`` invalidation hook.
 # Without them a password set on an already-cached page left its body readable
 # in /llms-full.txt (QA-06, FINDINGS D-E1 -- the gating is only worth as much as
 # the cache that remembers it).
-ACCESS_FIELDS = frozenset({'visibility', 'visible_boundary', 'group_ids'})
+ACCESS_FIELDS = frozenset({'visibility', 'group_ids'})
 
-LLM_VIEW_TRIGGER_FIELDS = ARCH_FIELDS | ACCESS_FIELDS
+# The SEO description entered before publishing is reused as the page summary in
+# /llms.txt, so changing it must invalidate the generated index.
+SEO_FIELDS = frozenset({'website_meta_description'})
+
+LLM_VIEW_TRIGGER_FIELDS = ARCH_FIELDS | ACCESS_FIELDS | SEO_FIELDS
 
 
 class IrUiView(models.Model):
