@@ -37,6 +37,18 @@ ABSOLUTE_HOST = re.compile(r'https?://[^/\s>"\']+')
 # The placeholder part refuses a leading slash, so ``</code>`` right after a
 # route in the listing HTML is not mistaken for one.
 ROUTE_TOKEN = re.compile(r'/(?:llms|exports)[A-Za-z0-9_.:/-]*(?:<[^>/]{1,40}>[A-Za-z0-9_.:/-]*)*')
+# The one route-shaped claim that does not live under ``/llms``: a page's own URL
+# plus ``.md``, advertised with its placeholder spelled out (``/<page-url>.md``).
+# It needs its own pattern rather than a widened ``ROUTE_TOKEN``, because widening
+# it to any ``/foo.md`` would turn every example URL in the listing -- "/about.md",
+# "/contact.md" -- into a claim the guard must verify, and an example is not a
+# route.  Placeholder-only keeps the check exactly as strict as the code.
+MIRROR_ROUTE_TOKEN = re.compile(r'/<[^>/]{1,40}>\.md')
+# The rule as the controller writes it, and as the registry holds it.  Named here
+# so ``_registered_routes`` below cannot quietly stop covering it: a guard whose
+# filter matches nothing is the failure this file already refuses to accept (see
+# ``test_the_guard_itself_catches_the_original_fabrication``).
+MIRROR_ROUTE_RULE = '/<path:page_path>.md'
 PATH_PARAM = re.compile(r'<[^>/]{1,40}>')
 TRAILING = '`*_.\'")],;: '
 
@@ -138,10 +150,13 @@ class TestListingClaims(TransactionCase):
         converters = self.env['ir.http']._get_converters()
         return {_canonical(url)
                 for url, _endpoint in odoo_http._generate_routing_rules(mods, False, converters)
-                if url.startswith('/llms')}
+                if url.startswith('/llms') or url == MIRROR_ROUTE_RULE}
 
     def _advertised_routes(self):
-        return {_canonical(token) for token in ROUTE_TOKEN.findall(self._listing_text())}
+        listing = self._listing_text()
+        return {_canonical(token)
+                for pattern in (ROUTE_TOKEN, MIRROR_ROUTE_TOKEN)
+                for token in pattern.findall(listing)}
 
     def _is_served(self, path, registered):
         """``/llms/page/<id>.md`` is served by the rule ``/llms/page/<int:page_id>.md``."""
@@ -190,12 +205,39 @@ class TestListingClaims(TransactionCase):
 
     def test_every_registered_route_is_advertised(self):
         """The listing must not under-claim either -- a crawler owner who never
-        learns about ``/llms.md`` cannot use it."""
+        learns about ``/llms.md`` cannot use it.
+
+        This is the guard that went red when the mirrored per-page route shipped:
+        ``/<page-url>.md`` is a real, documented URL, and a store page that stays
+        silent about it sells half the feature.
+        """
         registered = self._registered_routes()
         advertised = self._advertised_routes()
         missing = sorted(path for path in registered if path not in advertised)
         self.assertEqual(missing, [],
                          '%s serves routes the listing never mentions: %s' % (MODULE, missing))
+
+    def test_the_mirrored_page_route_is_registered_and_advertised(self):
+        """Named twice, once as a route and once as a claim, because it is the only
+        endpoint whose spelling the listing has to guess at.
+
+        ``/llms.txt`` and ``/llms/page/<id>.md`` are literal enough that a writer
+        cannot drift from them.  ``/<page-url>.md`` is a *rule*, and the two ways it
+        can be written wrong are both silent: a controller that renames the
+        placeholder leaves the listing advertising a pattern the registry no longer
+        holds, and a listing that drops it leaves a working URL nobody buys the
+        module to find.  ``test_every_registered_route_is_advertised`` catches either
+        only by accident, so this test pins the one canonical form -- ``/<>.md``,
+        after the placeholder is normalised -- on both sides.
+        """
+        canonical_mirror = _canonical(MIRROR_ROUTE_RULE)
+        self.assertEqual(canonical_mirror, '/<>.md')
+        self.assertIn(
+            canonical_mirror, self._registered_routes(),
+            'the controller no longer registers %s' % MIRROR_ROUTE_RULE)
+        self.assertIn(
+            canonical_mirror, self._advertised_routes(),
+            'the listing stopped advertising the mirrored page Markdown route')
 
     def test_the_listing_names_screens_that_exist(self):
         """Each label is checked twice: promised by the listing, shipped by the code.

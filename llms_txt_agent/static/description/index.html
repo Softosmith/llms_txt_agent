@@ -195,8 +195,11 @@
                 <h4 class="fw-bold">Smart HTML-to-Markdown Parser</h4>
                 <p class="text-muted small mb-0">
                     Converts Odoo Website HTML pages and landing pages into
-                    clean GitHub-Flavored Markdown &mdash; headings, lists, tables,
-                    links, and bold text preserved, HTML noise stripped.
+                    clean GitHub-Flavored Markdown &mdash; headings, lists, links,
+                    images, checklists and the navigation your visitors can see are
+                    kept, only what a visitor cannot see (editor-only blocks, scripts,
+                    hidden fields) is stripped, and a merged-cell table stays as safe
+                    HTML instead of a flattened grid that reads wrong.
                 </p>
             </div>
         </div>
@@ -207,8 +210,9 @@
                 <h4 class="fw-bold">Automatic Sync &amp; Caching</h4>
                 <p class="text-muted small mb-0">
                     Pick <b>Generation &amp; Cache Mode</b>: cached with an hourly rebuild,
-                    cached daily, or rebuilt on every request. A cache hit is a single
-                    field read, so the crawl never waits on your live database &mdash; and
+                    cached daily, or rebuilt on every request. The index, full export,
+                    and every per-page Markdown document are pre-built, so a crawl never
+                    waits on live page conversion &mdash; and
                     editing, publishing, or excluding a page invalidates the cache for the
                     website you edited, not for every website in the database.
                 </p>
@@ -221,8 +225,8 @@
             <div class="p-4 border rounded-3 h-100 bg-white" style="min-height: 150px;">
                 <h4 class="fw-bold"><i class="fa fa-file-code-o me-2"></i>Full Markdown Export</h4>
                 <p class="text-muted small mb-0">
-                    <code>/llms-full.txt</code> plus per-page
-                    <code>/llms/page/&lt;id&gt;.md</code> endpoints for deep LLM
+                    <code>/llms-full.txt</code> plus one Markdown copy of each
+                    published page at <code>/&lt;page-url&gt;.md</code> for deep LLM
                     context retrieval and RAG indexing.
                 </p>
             </div>
@@ -291,6 +295,42 @@
 </section>
 
 <section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3 class="oe_slogan text-center">Upgrading an existing self-hosted installation</h3>
+            <p class="text-muted" style="max-width: 900px; margin: 0 auto 20px;">
+                Odoo loads Python models and HTTP routes when the server starts. After
+                uploading a new module version, restart Odoo <b>before</b> upgrading the
+                module so the new code is loaded and any new database fields are created.
+            </p>
+            <ol class="text-muted" style="max-width: 860px; margin: 0 auto 20px; line-height: 1.8;">
+                <li>Upload or pull the updated module files.</li>
+                <li>Restart the Odoo service.</li>
+                <li>Upgrade <code>llms_txt_agent</code> from <b>Apps</b>.</li>
+                <li>Open <b>Website &rsaquo; Configuration &rsaquo; Settings</b> and click <b>Rebuild Cache Now</b>.</li>
+            </ol>
+            <p class="text-muted" style="max-width: 900px; margin: 0 auto 10px;">
+                Alternatively, stop the normal Odoo process and run:
+            </p>
+            <pre style="max-width: 900px; margin: 0 auto 20px; padding: 16px; background: #212529; color: #f8f9fa; border-radius: 6px; white-space: pre-wrap;"><code>./odoo-bin -c /path/to/odoo.conf -d DATABASE_NAME \
+  -u llms_txt_agent --stop-after-init</code></pre>
+            <div class="alert alert-info" style="max-width: 900px; margin: 0 auto 20px;">
+                <b>Short version:</b> Install the updated files &rarr; restart Odoo &rarr;
+                upgrade the module &rarr; rebuild the cache.
+            </div>
+            <p class="text-muted mb-0" style="max-width: 900px; margin: 0 auto;">
+                Start the normal Odoo service again after a command-line upgrade. A second
+                restart after upgrading is generally unnecessary when Odoo was restarted
+                first. Odoo.sh and managed hosting normally restart workers during deployment,
+                but the module must still be upgraded to create new database fields. If you
+                see a missing database column error, stop Odoo, run the command-line upgrade
+                above, and start Odoo again.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
     <div class="oe_row oe_spaced">
         <div class="oe_span12 text-center">
             <h3 class="oe_slogan">Per-page control, from the screens you already use</h3>
@@ -391,9 +431,17 @@
                     <tr>
                         <td class="fw-bold">Endpoints served</td>
                         <td>
-                            <code>/llms.txt</code>, <code>/llms-full.txt</code>,
-                            <code>/llms.md</code>,
-                            <code>/llms/page/&lt;id&gt;.md</code>
+                            <code>/llms.txt</code>, <code>/llms-full.txt</code> and
+                            <code>/llms.md</code> (the same index document, with
+                            Markdown headers), plus one Markdown copy of every
+                            published page at that page's own URL with
+                            <code>.md</code> appended &mdash;
+                            <code>/&lt;page-url&gt;.md</code>, so
+                            <code>/about.md</code> for a page published at
+                            <code>/about</code>, and <code>/home.md</code> for the
+                            homepage &mdash; and the older id-based
+                            <code>/llms/page/&lt;id&gt;.md</code>, which stays
+                            supported.
                         </td>
                     </tr>
                     <tr>
