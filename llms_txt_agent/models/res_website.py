@@ -145,6 +145,8 @@ class Website(models.Model):
         self.ensure_one()
         return [
             ('is_published', '=', True),
+            '|', ('date_publish', '=', False),
+            ('date_publish', '<=', fields.Datetime.now()),
             ('website_id', 'in', (False, self.id)),
             ('llm_exclude', '=', False),
             ('website_indexed', '=', True),
@@ -319,10 +321,11 @@ class Website(models.Model):
         sudo = self.sudo()
         lang = self.env.context.get('lang') or LLM_FALLBACK_LANG
         stored = self._fields[field]._get_stored_translations(sudo) or {}
+        served = set(self._llms_cache_languages())
         translations = {
             code: value
             for code, value in stored.items()
-            if not code.startswith('_') and isinstance(value, str)
+            if code in served and isinstance(value, str)
         }
         translations.setdefault('en_US', '')
         translations[lang] = content
