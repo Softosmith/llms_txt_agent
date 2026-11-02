@@ -205,6 +205,15 @@ class TestLlmsTxtAgent(TransactionCase):
         self.assertEqual(joined_sections.count('Test Home Page'), 1)
         self.assertNotIn('Generic Home', joined_sections)
 
+    def test_future_scheduled_page_is_not_exported(self):
+        self.page_home.date_publish = '2030-01-01 00:00:00'
+
+        content = self.website._generate_llms_txt()
+        full_content = self.website._generate_llms_full_txt()
+
+        self.assertNotIn('/test-home.md', content)
+        self.assertNotIn('https://mytestsite.com/test-home', full_content)
+
     def test_page_exclusion(self):
         """Test that pages with llm_exclude=True are not included in llms.txt."""
         self.page_about.llm_exclude = True

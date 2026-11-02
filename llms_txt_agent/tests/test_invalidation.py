@@ -217,6 +217,13 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
         self._assert_cleared(self.website_a, 'the owning website')
         self._assert_cached(self.website_b, 'a foreign website (QA-38 over-broad scope)')
 
+    def test_moving_page_invalidates_old_and_new_websites(self):
+        """Changing website ownership must expire both affected indexes."""
+        self._warm(self.website_a, self.website_b)
+        self.page_a.write({'website_id': self.website_b.id})
+        self._assert_cleared(self.website_a, 'the previous owning website')
+        self._assert_cleared(self.website_b, 'the new owning website')
+
     def test_global_page_invalidates_all_websites(self):
         """A page with no website really is in every index — lock that in.
 
