@@ -140,14 +140,22 @@ class WebsitePage(models.Model):
 
     def write(self, vals):
         """QA-38: invalidate only when the write can change the output."""
+        invalidate = bool(set(vals) & LLM_PAGE_TRIGGER_FIELDS)
+        old_websites = self._llms_cache_websites() if invalidate else self.env['website']
         res = super().write(vals)
-        if set(vals) & LLM_PAGE_TRIGGER_FIELDS:
-            self._invalidate_llms_cache()
+        if invalidate:
+            (old_websites | self._llms_cache_websites())._invalidate_llms_cache()
         return res
 
     def unlink(self):
         self._invalidate_llms_cache()
         return super().unlink()
+
+    def _llms_cache_websites(self):
+        """Return every website whose generated documents include these pages."""
+        if any(not page.website_id for page in self):
+            return self.env['website'].search([])
+        return self.mapped('website_id')
 
     def _invalidate_llms_cache(self):
         """Trigger cache invalidation for associated websites.
@@ -159,8 +167,4 @@ class WebsitePage(models.Model):
         cache.  Wiping all websites on a single owned-page write is what made one
         tenant's edit expire everybody's cache.
         """
-        if any(not p.website_id for p in self):
-            websites = self.env['website'].search([])
-        else:
-            websites = self.mapped('website_id')
-        websites._invalidate_llms_cache()
+        self._llms_cache_websites()._invalidate_llms_cache()
