@@ -20,12 +20,12 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
       never fill the French key;
     * a truthy write is a jsonb *merge*, and when the value being merged carries
       no en_US key the ORM invents one from the value it is writing
-      (``odoo17/odoo/models.py:4551-4560``).  The first document ever cached in a
+      (``odoo16/odoo/models.py:4551-4560``).  The first document ever cached in a
       foreign language therefore also lands under en_US, and the next English
       crawler is served French.  ``_llms_cache_store()`` is why the sweep on this
       branch states every key it writes instead of leaving one to the fallback;
     * clearing is not the mirror image of writing -- a falsy value takes the
-      early return in ``Field.write`` (``odoo17/odoo/fields.py:1816-1819``) and
+      early return in ``Field.write`` (``odoo16/odoo/fields.py:1816-1819``) and
       NULLs the whole column, so the per-language invalidation sweep is
       redundant here and load-bearing on a series that updates the column key by
       key.  It is kept in the loop form for that reason.
@@ -94,7 +94,7 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
           invisible and the precondition fails for the wrong reason;
         * a *cleared* language is a missing or empty one: on this branch writing
           ``False`` to a translated field takes the early return in
-          ``Field.write`` (``odoo17/odoo/fields.py:1816-1819``) and NULLs the
+          ``Field.write`` (``odoo16/odoo/fields.py:1816-1819``) and NULLs the
           whole column, so the raw read has to tolerate both ``NULL`` and ``{}``;
           and a key holding ``""`` -- which is how the store helper parks a
           language it must not invent content for -- is "no document" exactly like
@@ -136,7 +136,7 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
         Warming French *first*, on a column that has never been written, is the
         one order the shipped code got wrong without anyone noticing: the merge
         seeds the missing en_US key from the value it is writing
-        (``odoo17/odoo/models.py:4551-4560``), so the French document also lands
+        (``odoo16/odoo/models.py:4551-4560``), so the French document also lands
         under ``en_US`` and the next English crawler takes a cache hit on French
         text.  Every other test here warms English first, and then the key already
         exists and the fallback never fires -- which is how it stayed invisible.

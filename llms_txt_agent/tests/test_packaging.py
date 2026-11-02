@@ -209,7 +209,7 @@ class TestPackaging(TransactionCase):
         """The manifest ``description`` is reStructuredText, and Odoo does render it.
 
         ``IrModuleModule._get_desc()``
-        (``odoo17/odoo/addons/base/models/ir_module.py:177-226``) takes the
+        (``odoo16/odoo/addons/base/models/ir_module.py:177-226``) takes the
         ``static/description/index.html`` when present and otherwise pipes this
         string through docutils with these same overrides (``:212-226``) -- which
         is the path the two companions ran on before W8 added their listings, and

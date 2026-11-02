@@ -23,7 +23,7 @@ _TITLE_NORMALIZE = re.compile(r'[^\w]+', re.UNICODE)
 # ``date_publish`` is deliberately in the list: the index publishes a page once
 # its scheduled date passes, so scheduling does change the output.
 LLM_PAGE_TRIGGER_FIELDS = frozenset({
-    'name', 'url', 'is_published', 'date_publish', 'website_indexed',
+    'name', 'url', 'is_published', 'website_published', 'date_publish', 'website_indexed',
     'visibility', 'website_id', 'view_id', 'active', 'arch',
     'llm_exclude', 'llm_custom_description',
 })

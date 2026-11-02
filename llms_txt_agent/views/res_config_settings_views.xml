@@ -5,61 +5,61 @@
         <field name="model">res.config.settings</field>
         <field name="inherit_id" ref="website.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <!-- Odoo 17 gives two blocks the same id (Privacy at
-                 website/res_config_settings_views.xml:79, SEO at :96), so
-                 //block[@id='website_settings'] would land in whichever one the
-                 XPath happens to resolve first.  Anchoring on a setting id is
-                 both unique and legal: @title could not be used here, because
-                 view inheritance may not select on a translated attribute
-                 (odoo17/odoo/addons/base/models/ir_ui_view.py:338-347 with
-                 TRANSLATED_ATTRS from odoo17/odoo/tools/translate.py:162-164). -->
-            <xpath expr="//block[.//setting[@id='google_analytics_setting']]" position="inside">
-                <setting id="website_llms_txt_setting" string="AI Search SEO (llms.txt &amp; Markdown)"
-                         help="Generates structured machine-readable llms.txt and markdown content exports for AI search engines (ChatGPT, Claude, Perplexity, Gemini).">
-                    <field name="llm_enabled"/>
-                    <div class="content-group" invisible="not llm_enabled">
-                        <div class="row mt16">
-                            <label class="col-lg-4 o_light_label" string="Site Title" for="llm_site_title"/>
-                            <field name="llm_site_title" placeholder="Defaults to Website Name" class="col-lg-8"/>
+            <!-- Odoo 16 uses the legacy o_setting_box layout. Insert before the
+                 unique Analytics box instead of targeting the duplicated
+                 website_settings container id. -->
+            <xpath expr="//div[@id='google_analytics_setting']" position="before">
+                <div class="col-12 col-lg-6 o_setting_box" id="website_llms_txt_setting">
+                    <div class="o_setting_left_pane">
+                        <field name="llm_enabled"/>
+                    </div>
+                    <div class="o_setting_right_pane">
+                        <label for="llm_enabled" string="AI Search SEO (llms.txt &amp; Markdown)"/>
+                        <div class="text-muted">
+                            Generate llms.txt and Markdown content exports for AI search engines.
                         </div>
-                        <div class="row mt8">
-                            <label class="col-lg-4 o_light_label" string="Site Summary / Tagline" for="llm_site_summary"/>
-                            <field name="llm_site_summary" placeholder="Brief overview description of your business/website for AI assistants" class="col-lg-8"/>
-                        </div>
-                        <div class="row mt8">
-                            <label class="col-lg-4 o_light_label" string="LLM Guidance / Prompt" for="llm_site_instructions"/>
-                            <field name="llm_site_instructions" placeholder="Additional prompt instructions or context for AI models" class="col-lg-8"/>
-                        </div>
-                        <div class="row mt16">
-                            <div class="col-12 font-weight-bold mb-2">Content Inclusion:</div>
-                            <div class="col-12 ms-3" id="llms_txt_agent_content_inclusion">
-                                <div>
+                        <div class="content-group" attrs="{'invisible': [('llm_enabled', '=', False)]}">
+                            <div class="row mt16">
+                                <label class="col-lg-4 o_light_label" string="Site Title" for="llm_site_title"/>
+                                <field name="llm_site_title" placeholder="Defaults to Website Name" class="col-lg-8"/>
+                            </div>
+                            <div class="row mt8">
+                                <label class="col-lg-4 o_light_label" string="Site Summary / Tagline" for="llm_site_summary"/>
+                                <field name="llm_site_summary" placeholder="Brief overview description of your business/website for AI assistants" class="col-lg-8"/>
+                            </div>
+                            <div class="row mt8">
+                                <label class="col-lg-4 o_light_label" string="LLM Guidance / Prompt" for="llm_site_instructions"/>
+                                <field name="llm_site_instructions" placeholder="Additional prompt instructions or context for AI models" class="col-lg-8"/>
+                            </div>
+                            <div class="row mt16">
+                                <div class="col-12 fw-bold mb-2">Content Inclusion:</div>
+                                <div class="col-12 ms-3" id="llms_txt_agent_content_inclusion">
                                     <field name="llm_include_pages"/>
                                     <label class="o_light_label ms-2" string="Include Published Website Pages" for="llm_include_pages"/>
                                 </div>
                             </div>
-                        </div>
-                        <div class="row mt16">
-                            <label class="col-lg-4 o_light_label" string="Generation &amp; Cache Mode" for="llm_cache_ttl"/>
-                            <field name="llm_cache_ttl" class="col-lg-8"/>
-                        </div>
-                        <div class="row mt8" invisible="llm_cache_ttl == 'realtime'">
-                            <label class="col-lg-4 o_light_label" string="Cache Last Rebuilt" for="llm_cache_last_updated"/>
-                            <div class="col-lg-8 d-flex align-items-center">
-                                <field name="llm_cache_last_updated" class="me-3"/>
-                                <button name="action_rebuild_llms_cache" type="object" string="Rebuild Cache Now" class="btn btn-sm btn-secondary"/>
+                            <div class="row mt16">
+                                <label class="col-lg-4 o_light_label" string="Generation &amp; Cache Mode" for="llm_cache_ttl"/>
+                                <field name="llm_cache_ttl" class="col-lg-8"/>
+                            </div>
+                            <div class="row mt8" attrs="{'invisible': [('llm_cache_ttl', '=', 'realtime')]}">
+                                <label class="col-lg-4 o_light_label" string="Cache Last Rebuilt" for="llm_cache_last_updated"/>
+                                <div class="col-lg-8 d-flex align-items-center">
+                                    <field name="llm_cache_last_updated" class="me-3"/>
+                                    <button name="action_rebuild_llms_cache" type="object" string="Rebuild Cache Now" class="btn btn-sm btn-secondary"/>
+                                </div>
+                            </div>
+                            <div class="mt16 pt-2 border-top">
+                                <a href="/llms.txt" target="_blank" role="button" class="btn btn-sm btn-outline-primary me-2">
+                                    <i class="fa fa-external-link me-1"/> Preview /llms.txt
+                                </a>
+                                <a href="/llms-full.txt" target="_blank" role="button" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fa fa-file-text-o me-1"/> Preview /llms-full.txt
+                                </a>
                             </div>
                         </div>
-                        <div class="mt16 pt-2 border-top">
-                            <a href="/llms.txt" target="_blank" role="button" class="btn btn-sm btn-outline-primary me-2">
-                                <i class="fa fa-external-link me-1"/> Preview /llms.txt
-                            </a>
-                            <a href="/llms-full.txt" target="_blank" role="button" class="btn btn-sm btn-outline-secondary">
-                                <i class="fa fa-file-text-o me-1"/> Preview /llms-full.txt
-                            </a>
-                        </div>
                     </div>
-                </setting>
+                </div>
             </xpath>
         </field>
     </record>

@@ -110,7 +110,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         a setting (``website.homepage_url``) -- not the constant ``/``.
 
         Odoo ships the rule in ``website.page._compute_is_homepage``
-        (``odoo17/addons/website/models/website_page.py:48-51``): a page is the
+        (``odoo16/addons/website/models/website_page.py:48-51``): a page is the
         homepage when its url equals ``website.homepage_url or '/'``.  The alias has
         to follow that expression or a site that moved its homepage to ``/welcome``
         gets a 404 on the one URL its own index points a crawler to.
@@ -184,7 +184,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         excluded, and ``website.page`` is read through ``sudo()`` for a body the
         owner locked.  Visibility is asserted last because the three boolean gates
         above reset themselves and a cleared selection value is not portable across
-        Odoo series (17.0-19.0 store the public mode as ``''``/NULL, 20.0 renamed it
+        Odoo series (16.0-19.0 store the public mode as ``''``/NULL, 20.0 renamed it
         to ``'public'``).
         """
         for field, locked, label in (
@@ -307,13 +307,13 @@ class TestLlmsTxtAgentHttp(HttpCase):
 
         Odoo pins a session's language through the ``frontend_lang`` cookie, and a
         cookie the server already put in the jar beats the one set for a single
-        request (``odoo17/odoo/tests/common.py:1966``).  Dropping the jar is what
+        request (``odoo16/odoo/tests/common.py:1966``).  Dropping the jar is what
         makes a second, differently-language request in the same test behave like
         the fresh crawler it is meant to model.
 
-        On Odoo 17 the test cursor is *itself* selected by a cookie:
+        On Odoo 16 the test cursor is *itself* selected by a cookie:
         ``test_request_key`` is read server-side at
-        ``odoo17/odoo/tests/common.py:765`` and put in the jar once per test
+        ``odoo16/odoo/tests/common.py:765`` and put in the jar once per test
         (``:1966``), never re-applied by ``url_open()``.  So the clear has to put
         that one back -- without it the next request runs against the real cursor,
         where this test's website and pages do not exist, and the endpoints 404
@@ -328,7 +328,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
     def _open_as_lang(self, path, lang_code):
         """GET *path* as a crawler whose ``frontend_lang`` cookie is *lang_code*.
 
-        Odoo 17's ``url_open()`` takes no ``cookies=`` keyword -- the
+        Odoo 16's ``url_open()`` takes no ``cookies=`` keyword -- the
         requests-based opener only grew one in 18.0 -- so the language goes on the
         session jar, which is what 18+ merges into the request anyway.  Any
         ``frontend_lang`` the server put there first is removed: two same-name
@@ -446,7 +446,7 @@ class TestLlmsTxtAgentHttp(HttpCase):
         self.assertFalse(self.website.llm_txt_cache)
         self.assertFalse(self.website.llm_full_txt_cache)
 
-        _post_init_hook(self.env)
+        _post_init_hook(self.env.cr, self.env.registry)
 
         for website in self.env['website'].search([('llm_enabled', '=', True)]):
             self.assertTrue(website.llm_txt_cache,

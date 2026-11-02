@@ -4,10 +4,12 @@
 
 import logging
 
+from odoo import api, SUPERUSER_ID
+
 _logger = logging.getLogger(__name__)
 
 
-def _post_init_hook(env):
+def _post_init_hook(cr, registry):
     """Warm the llms.txt caches immediately after installation (QA-02).
 
     Before this hook existed, a freshly installed database served HTTP 403 to
@@ -19,6 +21,7 @@ def _post_init_hook(env):
     own savepoint: one website with corrupt content must never turn into a
     failed module installation.
     """
+    env = api.Environment(cr, SUPERUSER_ID, {})
     try:
         websites = env['website'].sudo().search([('llm_enabled', '=', True)])
     except Exception:  # pragma: no cover - defensive, install must not break

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- QA-12.  On Odoo 17 this is the screen a website editor actually opens for
+    <!-- QA-12.  On Odoo 16 this is the screen a website editor actually opens for
          page settings: the frontend "Page Properties" dialog, whose view is fetched
          by reference (`form_view_ref='website.website_page_properties_view_form'`,
-         see odoo17/addons/website/static/src/components/dialog/page_properties.js:204).
-         Odoo 17 has no website.page.properties transient: that dialog form is a
+         see odoo16/addons/website/static/src/components/dialog/page_properties.js:204).
+         Odoo 16 has no website.page.properties transient: that dialog form is a
          `website.page` view (website/views/website_pages_views.xml:31-57), so the
          two controls are added straight onto the page record - which is also what
          makes a write here land on website.page.write and reuse the invalidation

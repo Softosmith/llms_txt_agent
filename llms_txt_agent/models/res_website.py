@@ -130,7 +130,7 @@ class Website(models.Model):
 
         Core precedent: ``website_page.py`` treats a page as publicly readable
         when it is published, ``website_indexed``, not password/signed-in-only
-        and passes its group check (``odoo17/addons/website/models/website_page.py:223-240``).
+        and passes its group check (``odoo16/addons/website/models/website_page.py:223-240``).
 
         ``visibility`` is written as an *allow-list* of "public" rather than as a
         deny-list of the three bad values, so a visibility mode added by a later
@@ -144,7 +144,7 @@ class Website(models.Model):
         """
         self.ensure_one()
         return [
-            ('is_published', '=', True),
+            ('website_published', '=', True),
             '|', ('date_publish', '=', False),
             ('date_publish', '<=', fields.Datetime.now()),
             ('website_id', 'in', (False, self.id)),
@@ -279,7 +279,7 @@ class Website(models.Model):
         ``translate=True``, i.e. one jsonb column keyed by language code, and a
         normal ORM read of a translated field **falls back to en_US** when the
         current key is missing -- ``Field.get_translation_fallback_langs``
-        (``odoo17/odoo/fields.py:1799-1806``) returns ``('fr_FR', 'en_US')`` for
+        (``odoo16/odoo/fields.py:1799-1806``) returns ``('fr_FR', 'en_US')`` for
         French, and the read walks that chain.  So ``if not
         self.llm_txt_cache`` was never a per-language cold check: a French
         crawler got a *cache hit* on the English document and regenerated
@@ -289,7 +289,7 @@ class Website(models.Model):
         ``field._get_stored_translations()`` is used rather than a hand-written
         ``SELECT col->>%s`` because it **flushes the record first** -- the helper
         calls ``record.flush_recordset([self.name])`` before its own SELECT
-        (``odoo17/odoo/fields.py:1783-1797``), and raw SQL does not, so an
+        (``odoo16/odoo/fields.py:1783-1797``), and raw SQL does not, so an
         unflushed read would serve a document from before the last save.
         """
         self.ensure_one()
@@ -303,7 +303,7 @@ class Website(models.Model):
         A plain ORM write cannot do that on this branch.  When the value being
         merged carries no ``en_US`` key, ``BaseModel._write()`` supplies one
         itself -- it prepends ``{'en_US': <first written value>}`` to the column
-        (``odoo17/odoo/models.py:4551-4560``), which is meant to seed the
+        (``odoo16/odoo/models.py:4551-4560``), which is meant to seed the
         fallback language on a fresh record.  Applied to a cold cache column it
         files the *French* document under ``en_US`` as well, and the next English
         crawler then takes a cache hit on French text -- QA-11 with the two
@@ -312,7 +312,7 @@ class Website(models.Model):
 
         ``update_field_translations()`` takes the whole language map, so the
         English key is carried along instead of being invented from whatever the
-        request happened to generate (``odoo17/odoo/models.py:3603-3610``).  An
+        request happened to generate (``odoo16/odoo/models.py:3603-3610``).  An
         empty string is what a language that has never been generated looks like
         here: ``_llms_cache_read()`` reads it back as cold, and the next crawler
         for that language regenerates properly.
@@ -409,7 +409,7 @@ class Website(models.Model):
         -- and on a multi-language site that is the whole point of the cache.
 
         ``_llms_cache_languages()`` is a set, so the pass order is otherwise
-        arbitrary; English goes first because it is the key Odoo 17's merge
+        arbitrary; English goes first because it is the key Odoo 16's merge
         invents when a write lands on a column without one (``_llms_cache_store``
         pins it, this just keeps the two in agreement).
         """
@@ -439,7 +439,7 @@ class Website(models.Model):
                 # runs on the transient settings record, whose related field was
                 # read once when the form was built and never re-read.  A
                 # display_notification action returns ``params['next']`` to the
-                # action service (odoo17/addons/web/static/src/webclient/actions/
+                # action service (odoo16/addons/web/static/src/webclient/actions/
                 # client_actions.js:25), so this reloads the screen after the
                 # toast instead of leaving the label stale.
                 'next': {
@@ -510,7 +510,7 @@ class Website(models.Model):
 
         QA-11 / QA-24.  Under HTTP the context language already *is* the
         negotiated one -- ``http_routing`` puts ``request.lang`` into the context
-        in ``_frontend_pre_dispatch()`` (``odoo17/addons/http_routing/models/ir_http.py:584-587``),
+        in ``_frontend_pre_dispatch()`` (``odoo16/addons/http_routing/models/ir_http.py:584-587``),
         after trying the URL, the ``frontend_lang`` cookie, then the session
         language derived from ``Accept-Language``.  So reading the context is
         enough, and this model stays free of ``odoo.http``.
@@ -520,17 +520,17 @@ class Website(models.Model):
         check a crawler sending ``Accept-Language: de`` on a site that has no
         German would turn a 200 into a 500.
 
-        Odoo 17 has no ``Lang._get_code()``/``Lang._get_active_by()`` (those
+        Odoo 16 has no ``Lang._get_code()``/``Lang._get_active_by()`` (those
         helpers arrive in 18.0), and its ``Lang._lang_get()`` is not cached, so
         the active-test search below is written against the ORM instead.  It is
         the same question asked the same way: is this an active language?
         """
         self.ensure_one()
         Lang = self.env['res.lang'].sudo()
-        default_id = self.sudo()._get_cached('default_lang_id')
+        default_lang = self.sudo().default_lang_id
         candidates = [
             self.env.context.get('lang'),
-            Lang.browse(default_id).code if default_id else False,
+            default_lang.code if default_lang else False,
             LLM_FALLBACK_LANG,
         ]
         for code in candidates:
@@ -569,10 +569,10 @@ class Website(models.Model):
         by language code, so one write must not leave the languages nobody is
         looking at holding a stale document forever.  On this branch the loop is
         belt-and-braces -- a falsy value takes the early return in
-        ``Field.write`` (``odoo17/odoo/fields.py:1816-1819``) and NULLs the whole
+        ``Field.write`` (``odoo16/odoo/fields.py:1816-1819``) and NULLs the whole
         column, so the first pass already clears every language -- but the
         per-key merge that a truthy write goes through
-        (``odoo17/odoo/models.py:4551-4560``) is exactly why iterating, rather
+        (``odoo16/odoo/models.py:4551-4560``) is exactly why iterating, rather
         than writing once in the current context, is the form that stays correct
         wherever the column is updated key by key.
         """

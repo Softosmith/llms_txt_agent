@@ -180,7 +180,7 @@ class TestLlmsHttpContract(HttpCase):
         back to the record.
 
         Hardened with the ORM fact the first draft learned the hard way:
-        ``write_date`` comes from ``cr.now()`` (``odoo17/odoo/models.py:4540``, set
+        ``write_date`` comes from ``cr.now()`` (``odoo16/odoo/models.py:4540``, set
         inside ``_write()``, which starts at ``:4522``) and PostgreSQL fixes the
         transaction timestamp at the first statement, so every ORM write inside one
         ``TransactionCase`` gets the *same* ``write_date``.  The record stamp is
@@ -280,7 +280,7 @@ class TestLlmsHttpContract(HttpCase):
         negotiated document usually varies on -- but on this branch the frontend
         language is *not* taken from Accept-Language at all: http_routing picks the
         URL prefix, then the ``frontend_lang`` cookie, then the context, then the
-        website default (``odoo17/addons/http_routing/models/ir_http.py:399-402,
+        website default (``odoo16/addons/http_routing/models/ir_http.py:399-402,
         443-448``), and neither ``http_routing``, ``website`` nor ``odoo/http.py``
         reads the Accept-Language header anywhere (``grep -i accept-language`` over
         those files returns nothing).  A cache told to vary on Accept-Language
@@ -306,7 +306,7 @@ class TestLlmsHttpContract(HttpCase):
 
         The investigation, because the brief asked for one before any change:
         the cookie is *not* written by this module.  It is ``odoo.http``'s own
-        ``Request._save_session()`` (``odoo17/odoo/http.py:1891-1905``), which sets
+        ``Request._save_session()`` (``odoo16/odoo/http.py:1891-1905``), which sets
         the cookie whenever the request's ``session_id`` differs from the session's
         -- true for every anonymous first visit, at ``max-age`` = the configured
         session inactivity (7 days).  Proof it is platform-wide: the QA baseline
@@ -316,18 +316,18 @@ class TestLlmsHttpContract(HttpCase):
         Odoo does give a route a documented way out: the routing dict is copied
         onto the request's session as ``can_save``
         (``self.request.session.can_save = routing.get('save_session', True)``,
-        ``odoo17/odoo/http.py:2052``) and ``_save_session`` returns without
+        ``odoo16/odoo/http.py:2052``) and ``_save_session`` returns without
         minting anything when it is false.  These five routes are genuinely
         stateless: the website comes from the request host
-        (``odoo17/addons/website/models/website.py:1125-1141``, cached by
+        (``odoo16/addons/website/models/website.py:1125-1141``, cached by
         ``_get_current_website_id`` at ``:1143-1144``) and the language from the
         ``frontend_lang`` cookie
-        (``odoo17/addons/http_routing/models/ir_http.py:444``), neither of which
+        (``odoo16/addons/http_routing/models/ir_http.py:444``), neither of which
         requires a saved session.  So this half of QA-36 is a module fix.
 
         The *other* half is not: the ``frontend_lang`` cookie is set by core's
         ``_frontend_pre_dispatch()``
-        (``odoo17/addons/http_routing/models/ir_http.py:584-587``) on every
+        (``odoo16/addons/http_routing/models/ir_http.py:584-587``) on every
         frontend response whose language differs from the cookie, and a module
         cannot avoid it without overriding core dispatch.  Recorded as WON'T FIX
         in QA_REPORT.
@@ -474,7 +474,7 @@ class TestLlmsCronContract(TransactionCase):
         The crons are *not* fired with ``method_direct_trigger()``.  On this branch
         that path grabs a NOWAIT row lock on the cron, runs its server action and
         stamps ``lastcall`` in the caller's cursor
-        (``odoo17/odoo/addons/base/models/ir_cron.py:102-111``), i.e. it wraps the
+        (``odoo16/odoo/addons/base/models/ir_cron.py:102-111``), i.e. it wraps the
         model method under test in bookkeeping that can itself fail on a row the
         enclosing transaction already touched -- and on the series where the job
         gets its own cursor it blocks on the locks this test holds, which is how an
@@ -598,7 +598,7 @@ class TestLlmsRouteRules(TransactionCase):
 
         Asserted here as well as on the live response because the behaviour comes
         from this dict -- ``Dispatcher.pre_dispatch()`` reads ``save_session`` out
-        of it (``odoo17/odoo/http.py:2044,2052``) and nothing else can turn the
+        of it (``odoo16/odoo/http.py:2044,2052``) and nothing else can turn the
         cookie off.
         """
         for path in INDEX_PATHS + ITEM_RULES:

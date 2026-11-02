@@ -14,12 +14,12 @@ have to fetch: the *same* view the web client resolves for the screen in
 question.  Two traps are worth naming:
 
 * The Page Properties dialog does not use ``website.page``'s default form view.
-  On this branch the dialog's ``resModel`` *is* ``website.page`` -- Odoo 17 has
+  On this branch the dialog's ``resModel`` *is* ``website.page`` -- Odoo 16 has
   no ``website.page.properties`` transient; that came later -- and it pins its
   arch by reference, with ``form_view_ref='website.website_page_properties_view_form'``
-  (``odoo17/addons/website/static/src/components/dialog/page_properties.js:200-205``).
+  (``odoo16/addons/website/static/src/components/dialog/page_properties.js:200-205``).
   The view it names is a second ``website.page`` form
-  (``odoo17/addons/website/views/website_pages_views.xml:31-57``), distinct from
+  (``odoo16/addons/website/views/website_pages_views.xml:31-57``), distinct from
   the backend ``website_pages_form_view``.  ``get_view(view_type='form')``
   without the ref resolves whichever of them ``ir.ui.view.default_view()``
   returns, so a test written against that arch can pass while the real dialog
@@ -27,7 +27,7 @@ question.  Two traps are worth naming:
 * The same is true of the backend: core's ``website_pages_form_view`` inherits
   cleanly and *is* returned by ``get_view``, yet QA-12's finding stands because
   ``action_website_pages_list`` binds only ``tree,kanban``
-  (``odoo17/addons/website/views/website_pages_views.xml:162``) -- no screen
+  (``odoo16/addons/website/views/website_pages_views.xml:162``) -- no screen
   offers the form.  So the guard here is on the action, not on the view.
 """
 
@@ -77,7 +77,7 @@ class TestLlmsUiReachability(TransactionCase):
         that dialog edits a ``website.page`` (``page_properties.js:200``).
         ``get_view`` honours ``TYPE_view_ref`` in context and nothing else,
         which is exactly the contract the client relies on
-        (``odoo17/odoo/addons/base/models/ir_ui_view.py:2634-2642``).
+        (``odoo16/odoo/addons/base/models/ir_ui_view.py:2634-2642``).
         """
         return self.env['website.page'].sudo().with_context(
             form_view_ref=PAGE_PROPERTIES_VIEW_REF,
@@ -91,7 +91,7 @@ class TestLlmsUiReachability(TransactionCase):
     def _settings_block(self, arch, setting_id):
         start = arch.find('id="%s"' % setting_id)
         self.assertNotEqual(start, -1, '%s is not in the settings form' % setting_id)
-        nxt = arch.find('<setting', start + 1)
+        nxt = arch.find('o_setting_box" id="', start + 1)
         return arch[start:nxt if nxt != -1 else len(arch)]
 
     # -- QA-12: the dialog ------------------------------------------------
@@ -262,7 +262,7 @@ class TestLlmsUiReachability(TransactionCase):
         """``<a class="btn">`` without ``role`` logs a view-validation warning.
 
         On this branch the check is ``ir.ui.view._validate_tag_a``
-        (``odoo17/odoo/addons/base/models/ir_ui_view.py:1613-1618``).  The
+        (``odoo16/odoo/addons/base/models/ir_ui_view.py:1613-1618``).  The
         warning is what QA-35 is about; asserting on the fetched arch is the
         deterministic half of it (the log-scanning half needs a live install).
         """
