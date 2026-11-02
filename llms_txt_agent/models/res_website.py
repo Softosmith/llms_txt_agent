@@ -145,6 +145,8 @@ class Website(models.Model):
         self.ensure_one()
         return [
             ('is_published', '=', True),
+            '|', ('date_publish', '=', False),
+            ('date_publish', '<=', fields.Datetime.now()),
             ('website_id', 'in', (False, self.id)),
             ('llm_exclude', '=', False),
             ('website_indexed', '=', True),
