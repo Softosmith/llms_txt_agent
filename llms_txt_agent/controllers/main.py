@@ -26,10 +26,8 @@ class WebsiteLlmController(http.Controller):
       place is precisely how "Cached (Daily)" ended up promising an hour, and how
       ``/llms.md`` ended up with no ``Cache-Control`` at all.
 
-    ``save_session=False`` on all five routes (QA-36): these documents are
-    anonymous, host-resolved and stateless, yet every crawler hit was getting a
-    fresh 7-day ``session_id`` cookie *and* a row in the session store -- see
-    ``tests/test_http_contract.py`` for the investigation.
+    ``save_session=False`` keeps anonymous crawler requests stateless and avoids
+    creating a session cookie for each document fetch.
     """
 
     # -- one place for the contract --------------------------------------
@@ -103,11 +101,11 @@ class WebsiteLlmController(http.Controller):
         lang = website._llms_lang_code()
         # ``/home.md`` names the homepage, and Odoo's homepage URL is a setting, not
         # the constant ``/``: core resolves it the same way, as
-        # ``website.homepage_url or '/'`` (``odoo16/addons/website/models/website_page.py:48-51``).
+        # ``website.homepage_id.url or '/'`` on Odoo 15.
         # Hardcoding ``/`` meant that on a site whose homepage is ``/welcome`` the
         # alias looked for a page at ``/`` -- and 404'd, or served some other
         # record that happened to own that URL.
-        page_url = ((website.homepage_url or '/') if page_path == 'home'
+        page_url = ((website.homepage_id.url or '/') if page_path == 'home'
                     else '/%s' % page_path.strip('/'))
         page = website._get_llm_exportable_page(page_url=page_url)
         if not page:

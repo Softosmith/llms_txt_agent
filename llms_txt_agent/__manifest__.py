@@ -4,7 +4,7 @@
 
 {
     'name': 'LLMs.txt Agent: Website Pages AI SEO (GEO/AEO for ChatGPT, Gemini, Perplexity)',
-    'version': '16.0.1.2.0',
+    'version': '15.0.1.2.0',
     'category': 'Website/Website',
     'summary': 'Publish your website pages as AI SEO / GEO / AEO llms.txt & Markdown that ChatGPT, Gemini and Perplexity can read.',
     'description': """
@@ -97,7 +97,6 @@ Developed by Asad Ali at Softosmith (https://softosmith.com).
         'data/ir_cron_data.xml',
         'views/res_config_settings_views.xml',
         'views/website_page_views.xml',
-        'views/website_page_properties_views.xml',
     ],
     'images': [
         'static/description/banner.png',

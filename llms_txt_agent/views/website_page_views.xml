@@ -31,7 +31,7 @@
         <field name="name">website.page.list.llms.txt</field>
         <field name="model">website.page</field>
         <!-- 200, on purpose: ir.ui.view.default_view() takes the *lowest*
-             priority (odoo16/odoo/addons/base/models/ir_ui_view.py:162,575), and
+             priority (odoo15/odoo/addons/base/models/ir_ui_view.py:162,575), and
              core's own website.page list sits at 99.  A smaller number here
              would silently become the fallback list for every other screen that
              resolves one, which is not ours to decide.  This action binds the
@@ -62,7 +62,7 @@
     </record>
 
     <!-- website.page has one ACL row in core, for group_website_designer
-         (odoo16/addons/website/security/ir.model.access.csv:12), so a menu open
+         (odoo15/addons/website/security/ir.model.access.csv:12), so a menu open
          to every employee would show an empty list to everyone else and break on
          save.  Same group, same reach as core's own Pages menu. -->
     <menuitem id="llms_txt_pages_menu"

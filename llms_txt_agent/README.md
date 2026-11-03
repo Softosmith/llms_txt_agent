@@ -1,7 +1,7 @@
-# LLMs.txt Agent: Website Pages AI SEO for Odoo 16
+# LLMs.txt Agent: Website Pages AI SEO for Odoo 15
 
 [![License: OPL-1](https://img.shields.io/badge/License-OPL--1-blue.svg)](LICENSE)
-[![Odoo Version](https://img.shields.io/badge/Odoo-16.0-purple.svg)](https://www.odoo.com)
+[![Odoo Version](https://img.shields.io/badge/Odoo-15.0-purple.svg)](https://www.odoo.com)
 [![Developer](https://img.shields.io/badge/Developed%20By-Asad%20Ali%20%40%20Softosmith-orange.svg)](https://softosmith.com)
 
 Developed by **Asad Ali** at **[Softosmith.com](https://softosmith.com)**.
