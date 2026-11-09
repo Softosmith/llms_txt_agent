@@ -6,7 +6,7 @@ from datetime import timedelta
 import json
 
 from odoo import api, fields, models
-from .html_to_md import html_to_markdown
+from .html_to_md import MARKDOWN_CACHE_VERSION, html_to_markdown
 from .llms_chain import chain_call, sort_sections
 from .llms_http import cache_control_for, max_age_seconds
 
@@ -33,6 +33,7 @@ LLM_CONTENT_FIELDS = frozenset({
 # this guard is the safety net rather than the routine case.
 LLM_CACHE_FIELDS = frozenset({
     'llm_txt_cache', 'llm_full_txt_cache', 'llm_page_cache',
+    'llm_full_txt_cache_version', 'llm_page_cache_version',
     'llm_cache_last_updated',
 })
 
@@ -91,6 +92,16 @@ class Website(models.Model):
     )
     llm_page_cache = fields.Text(
         string="Cached Page Markdown",
+        translate=True,
+        readonly=True,
+    )
+    llm_full_txt_cache_version = fields.Char(
+        string="Full Markdown Cache Version",
+        translate=True,
+        readonly=True,
+    )
+    llm_page_cache_version = fields.Char(
+        string="Page Markdown Cache Version",
         translate=True,
         readonly=True,
     )
@@ -316,10 +327,13 @@ class Website(models.Model):
         if website.llm_cache_ttl == 'realtime':
             return website._generate_llms_full_txt()
         cached = website._llms_cache_read('llm_full_txt_cache')
-        if cached:
+        cache_version = website._llms_cache_read('llm_full_txt_cache_version')
+        if cached and cache_version == MARKDOWN_CACHE_VERSION:
             return cached
         content = website._generate_llms_full_txt()
         website._llms_cache_store('llm_full_txt_cache', content)
+        website._llms_cache_store(
+            'llm_full_txt_cache_version', MARKDOWN_CACHE_VERSION)
         website.sudo().write({'llm_cache_last_updated': fields.Datetime.now()})
         return content
 
@@ -352,9 +366,12 @@ class Website(models.Model):
             return page.get_llm_markdown(base_url=website.get_base_url())
 
         cached = website._llms_cache_read('llm_page_cache')
-        if not cached:
+        cache_version = website._llms_cache_read('llm_page_cache_version')
+        if not cached or cache_version != MARKDOWN_CACHE_VERSION:
             cached = website._generate_llm_page_cache()
             website._llms_cache_store('llm_page_cache', cached)
+            website._llms_cache_store(
+                'llm_page_cache_version', MARKDOWN_CACHE_VERSION)
             website.sudo().write({'llm_cache_last_updated': fields.Datetime.now()})
         return json.loads(cached).get(page.url)
 
@@ -380,7 +397,11 @@ class Website(models.Model):
                 lang_website._llms_cache_store(
                     'llm_full_txt_cache', lang_website._generate_llms_full_txt())
                 lang_website._llms_cache_store(
+                    'llm_full_txt_cache_version', MARKDOWN_CACHE_VERSION)
+                lang_website._llms_cache_store(
                     'llm_page_cache', lang_website._generate_llm_page_cache())
+                lang_website._llms_cache_store(
+                    'llm_page_cache_version', MARKDOWN_CACHE_VERSION)
             website.sudo().write({'llm_cache_last_updated': fields.Datetime.now()})
         return {
             'type': 'ir.actions.client',
@@ -516,6 +537,8 @@ class Website(models.Model):
         self.sudo().write({
             'llm_txt_cache': False,
             'llm_full_txt_cache': False,
+            'llm_full_txt_cache_version': False,
             'llm_page_cache': False,
+            'llm_page_cache_version': False,
             'llm_cache_last_updated': False,
         })

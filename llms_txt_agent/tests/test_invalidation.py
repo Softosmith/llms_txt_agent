@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo.tests.common import TransactionCase, tagged
+from odoo.addons.llms_txt_agent.models.html_to_md import MARKDOWN_CACHE_VERSION
 
 
 @tagged('post_install', '-at_install')
@@ -79,16 +80,30 @@ class TestLlmsTxtAgentInvalidation(TransactionCase):
             website.get_llms_full_txt_content()
             website.sudo()._llms_cache_store(
                 'llm_page_cache', website._generate_llm_page_cache())
+            website.sudo()._llms_cache_store(
+                'llm_page_cache_version', MARKDOWN_CACHE_VERSION)
 
     def _assert_cached(self, website, msg):
         self.assertTrue(website.llm_txt_cache, f'{msg}: llm_txt_cache should still be there')
         self.assertTrue(website.llm_full_txt_cache, f'{msg}: llm_full_txt_cache should still be there')
         self.assertTrue(website.llm_page_cache, f'{msg}: llm_page_cache should still be there')
+        self.assertEqual(
+            website.llm_full_txt_cache_version, MARKDOWN_CACHE_VERSION,
+            f'{msg}: full cache version should still be current')
+        self.assertEqual(
+            website.llm_page_cache_version, MARKDOWN_CACHE_VERSION,
+            f'{msg}: page cache version should still be current')
 
     def _assert_cleared(self, website, msg):
         self.assertFalse(website.llm_txt_cache, f'{msg}: llm_txt_cache must be empty')
         self.assertFalse(website.llm_full_txt_cache, f'{msg}: llm_full_txt_cache must be empty')
         self.assertFalse(website.llm_page_cache, f'{msg}: llm_page_cache must be empty')
+        self.assertFalse(
+            website.llm_full_txt_cache_version,
+            f'{msg}: full cache version must be empty')
+        self.assertFalse(
+            website.llm_page_cache_version,
+            f'{msg}: page cache version must be empty')
 
     # QA-10 --------------------------------------------------------------
     def test_settings_write_invalidates_cache(self):
