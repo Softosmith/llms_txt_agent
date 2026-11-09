@@ -5,6 +5,7 @@
 import json
 
 from odoo.tests.common import TransactionCase, tagged
+from odoo.addons.llms_txt_agent.models.html_to_md import MARKDOWN_CACHE_VERSION
 
 
 @tagged('post_install', '-at_install')
@@ -130,7 +131,10 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
             website = self.website.with_context(lang=lang)
             website.get_llms_txt_content()
             website.get_llms_full_txt_content()
-            website.sudo().write({'llm_page_cache': website._generate_llm_page_cache()})
+            website._llms_cache_store(
+                'llm_page_cache', website._generate_llm_page_cache())
+            website._llms_cache_store(
+                'llm_page_cache_version', MARKDOWN_CACHE_VERSION)
         self.assertEqual(self._cache_keys('llm_txt_cache'), ['en_US', 'fr_FR'],
                          'precondition: both keys must be warmed')
 
@@ -146,8 +150,14 @@ class TestLlmsTxtAgentLanguage(TransactionCase):
                              f'%s: llms-full.txt key must be cleared' % lang)
             self.assertFalse(website.llm_page_cache,
                              f'%s: page Markdown cache key must be cleared' % lang)
+            self.assertFalse(website.llm_full_txt_cache_version,
+                             f'%s: full cache version must be cleared' % lang)
+            self.assertFalse(website.llm_page_cache_version,
+                             f'%s: page cache version must be cleared' % lang)
         self.assertEqual(self._cache_keys('llm_txt_cache'), [])
+        self.assertEqual(self._cache_keys('llm_full_txt_cache_version'), [])
         self.assertEqual(self._cache_keys('llm_page_cache'), [])
+        self.assertEqual(self._cache_keys('llm_page_cache_version'), [])
         self.assertFalse(self.website.llm_cache_last_updated,
                          'the rebuild stamp must not survive invalidation (D-E)')
 

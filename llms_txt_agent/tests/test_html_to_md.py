@@ -490,6 +490,8 @@ class TestHtmlToMarkdownFixes(TransactionCase):
 
     def test_complete_editor_fixture_keeps_each_structure_separate(self):
         html = '''
+            <t t-name="website.test-page">
+            <t t-call="website.layout">
             <div id="wrap" class="oe_structure oe_empty">
                 <h1>LLMS Test Heading</h1>
                 <p>Text with <strong>bold</strong> and <em>italic</em>.</p>
@@ -499,6 +501,8 @@ class TestHtmlToMarkdownFixes(TransactionCase):
                 <ol><li>eng 1</li><li>phy101</li></ol>
                 <img src="/image.svg" alt="Man working on Workstation">
             </div>
+            </t>
+            </t>
         '''
         self.assertEqual(
             md(html),
