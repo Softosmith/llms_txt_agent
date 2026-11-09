@@ -5,7 +5,10 @@ import ast
 import os
 
 from odoo.tests.common import TransactionCase, tagged
-from odoo.addons.llms_txt_agent.models.html_to_md import html_to_markdown
+from odoo.addons.llms_txt_agent.models.html_to_md import (
+    MARKDOWN_CACHE_VERSION,
+    html_to_markdown,
+)
 from odoo.addons.llms_txt_agent.models.llms_chain import chain_call, next_hook, sort_sections
 
 
@@ -174,6 +177,61 @@ class TestLlmsTxtAgent(TransactionCase):
         self.assertIn('"/test-home"', cached_pages)
         self.assertIn('# Test Home Page', cached_pages)
         self.assertIn('Our main website content.', cached_pages)
+        self.assertEqual(
+            self.website._llms_cache_read('llm_page_cache_version'),
+            MARKDOWN_CACHE_VERSION,
+        )
+        self.assertEqual(
+            self.website._llms_cache_read('llm_full_txt_cache_version'),
+            MARKDOWN_CACHE_VERSION,
+        )
+
+    def test_page_cache_with_old_converter_version_is_regenerated(self):
+        self.website._llms_cache_store(
+            'llm_page_cache', '{"/test-home": "flattened legacy output"}')
+        self.website._llms_cache_store('llm_page_cache_version', '1')
+
+        content = self.website.get_llm_page_content(self.page_home)
+
+        self.assertIn('# Test Home Page', content)
+        self.assertIn('# Welcome Home\n\nOur main website content.', content)
+        self.assertNotIn('flattened legacy output', content)
+        self.assertEqual(
+            self.website._llms_cache_read('llm_page_cache_version'),
+            MARKDOWN_CACHE_VERSION,
+        )
+
+    def test_full_cache_with_old_converter_version_is_regenerated(self):
+        self.website._llms_cache_store(
+            'llm_full_txt_cache', 'flattened legacy full export')
+        self.website._llms_cache_store('llm_full_txt_cache_version', '1')
+
+        content = self.website.get_llms_full_txt_content()
+
+        self.assertIn('# My Test Company - Full Markdown Export', content)
+        self.assertNotIn('flattened legacy full export', content)
+        self.assertEqual(
+            self.website._llms_cache_read('llm_full_txt_cache_version'),
+            MARKDOWN_CACHE_VERSION,
+        )
+
+    def test_current_page_cache_does_not_bless_stale_full_cache(self):
+        self.website._llms_cache_store(
+            'llm_page_cache', '{"/test-home": "current page cache"}')
+        self.website._llms_cache_store(
+            'llm_page_cache_version', MARKDOWN_CACHE_VERSION)
+        self.website._llms_cache_store(
+            'llm_full_txt_cache', 'flattened legacy full export')
+        self.website._llms_cache_store('llm_full_txt_cache_version', '1')
+
+        self.assertEqual(
+            self.website.get_llm_page_content(self.page_home), 'current page cache')
+        full_content = self.website.get_llms_full_txt_content()
+        self.assertNotIn('flattened legacy full export', full_content)
+        self.assertEqual(
+            self.website._llms_cache_read('llm_page_cache'),
+            '{"/test-home": "current page cache"}',
+        )
 
     def test_llms_full_txt_generation(self):
         """Test full markdown export /llms-full.txt generation."""
