@@ -45,6 +45,12 @@ from html import escape, unescape
 from html.parser import HTMLParser
 from urllib.parse import quote, urlsplit, urlunsplit
 
+
+# Increment whenever a converter change can alter persisted Markdown output. Cached
+# documents carrying an older marker are regenerated instead of served after upgrade.
+MARKDOWN_CACHE_VERSION = '3'
+
+
 # -- vocabulary -----------------------------------------------------------
 
 #: Elements that contribute nothing: their whole subtree is dropped.  ``<t>`` is
@@ -66,14 +72,14 @@ _BLOCK_TAGS = frozenset({
     'address', 'article', 'aside', 'blockquote', 'dd', 'div', 'dl', 'dt',
     'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3',
     'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre',
-    'section', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+    'section', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul', 't',
 })
 
 #: Containers that hold blocks but add nothing themselves.
 _CONTAINER_TAGS = frozenset({
     'div', 'section', 'article', 'main', 'aside', 'p', 'dd', 'dt', 'dl', 'figure',
     'figcaption', 'address', 'fieldset', 'body', 'html', 'hgroup', 'center',
-    'details', 'summary', 'menu', 'dir', 'li',
+    'details', 'summary', 'menu', 'dir', 'li', 't',
 })
 
 _STRONG_TAGS = frozenset({'b', 'strong'})
